@@ -20,8 +20,8 @@ fase1_node:
     known_base_radius: 1.5
 
     # ===== Grade de varredura (serpentina) =====
-    grid_y_length: -6.0     # assinado: negativo varre para a esquerda
-    grid_step_x: 2.0
+    grid_y_length: -5.5     # assinado: negativo varre para a esquerda
+    grid_step_x: -1.5
     grid_num_steps: 3.0
 
     # ===== Altitudes (FRD, negativas) =====
@@ -42,6 +42,11 @@ fase1_node:
     # ===== Tolerancias e tempos =====
     position_tolerance: 0.15
     align_tolerance: 0.10
+    # Raio em que uma caixa reprojetada ainda conta como a MESMA base do
+    # ciclo anterior. Menor que a menor distancia entre duas bases da arena,
+    # ou o alvo caminha de base em base durante a descida.
+    target_association_radius: 1.0
+
     detection_timeout: 5.0
 
     # ===== PID de alinhamento =====
@@ -96,6 +101,14 @@ fase1_vision:
     # Lado real do quadrado da base, em metros. E o que permite ao PnP
     # recuperar a distancia sem supor a altura do alvo.
     bbox_real_size: 1.0
+
+    # Quanto o resultado do PnP pode se afastar do plano antes de ser
+    # descartado. Cobre a altura real das bases (max_base_height = 1,5 m) sem
+    # admitir absurdos: uma base saindo do quadro encolhe na imagem e o PnP
+    # le isso como distancia maior. Foi assim que a missao perseguiu uma base
+    # estimada a 10 m ABAIXO do solo para fora da arena.
+    pnp_max_plane_deviation: 1.5
+    border_margin_px: 2.0
     bbox_is_normalized: true
     use_pnp: true
     mean_base_height: -0.75

@@ -64,6 +64,13 @@ public:
     this->declare_parameter<double>("camera_tz", 0.0);
 
     this->declare_parameter<double>("bbox_real_size", 1.0);
+
+    // Guardas contra erro de escala do PnP. Ver o README da vision_geometry.
+    // Uma base saindo do quadro encolhe na imagem, e o PnP le isso como
+    // distancia maior -- foi assim que a missao perseguiu uma base estimada a
+    // 10 m ABAIXO do solo para fora da arena.
+    this->declare_parameter<double>("pnp_max_plane_deviation", 1.5);
+    this->declare_parameter<double>("border_margin_px", 2.0);
     this->declare_parameter<bool>("bbox_is_normalized", true);
     this->declare_parameter<bool>("use_pnp", true);
     this->declare_parameter<double>("mean_base_height", -0.75);
@@ -204,6 +211,9 @@ private:
     calib.ty = this->get_parameter("camera_ty").as_double();
     calib.tz = this->get_parameter("camera_tz").as_double();
     calib.target_size = this->get_parameter("bbox_real_size").as_double();
+    calib.pnp_max_plane_deviation =
+      this->get_parameter("pnp_max_plane_deviation").as_double();
+    calib.border_margin_px = this->get_parameter("border_margin_px").as_double();
     calib.bbox_is_normalized = this->get_parameter("bbox_is_normalized").as_bool();
 
     return calib;

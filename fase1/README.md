@@ -35,10 +35,18 @@ embutidas no nó da missão e duas bibliotecas forkadas (`cbr_drone_lib`,
 ```
 ARMING → TAKEOFF → SEARCH BASE ⇄ PRECISION ALIGN → PRECISION LANDING
                         ↑                                  ↓
-                    TAKEOFF ←────────────────────── REGISTER BASE
+                TAKEOFF AGAIN ←────────────────────── REGISTER BASE
                         ↓  (todas as bases feitas)
                    RETURN HOME → FINISHED
 ```
+
+**Por que há duas decolagens.** `TakeoffState()` reancora o referencial do mundo
+na posição atual (`setHomePosition`), o que é necessário na decolagem inicial —
+depois de armar, com o EKF já convergido. Na redecolagem seria destrutivo: a
+origem do mundo pularia para a base recém-visitada, e a lista de bases, a grade
+e a posição de casa passariam a apontar para um referencial extinto. O drone
+então pousaria na mesma base indefinidamente, sem erro nenhum. Por isso
+`TAKEOFF AGAIN` usa `TakeoffState(false)`.
 
 Duas decisões que diferem de 2025:
 
@@ -109,6 +117,19 @@ nada e detecta outra coisa.
 Uma máquina montada só a partir do `evtol.repos` **não** tem esse problema —
 `itajuba` e `sae_2025` não estão no manifesto. Se você tem os dois no `src/`
 por motivo histórico, confira qual módulo resolve antes de culpar a detecção.
+
+## O alvo de alinhamento segue a base escolhida
+
+O `SearchBaseState` escolhe a base; o nó da missão reprojeta o alvo a cada ciclo,
+para que a estimativa não envelheça enquanto o drone desce. Mas a reprojeção tem
+de acompanhar **a mesma base**, e não simplesmente a caixa mais próxima do centro
+da imagem — logo após redecolar, a caixa mais central é a base de onde o drone
+acabou de sair.
+
+A associação é por proximidade ao alvo do ciclo anterior, com portão de
+`target_association_radius`. E a idade do alvo conta o tempo sem ver **essa**
+base: com a contagem antiga, olhar para a base vizinha mantinha a idade em zero e
+o alinhamento nunca desistia de um alvo já perdido.
 
 ## Testes
 

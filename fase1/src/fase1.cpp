@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <limits>
 #include <variant>
 #include <vector>
 
@@ -86,7 +87,21 @@ public:
 
     // ---- Estados -------------------------------------------------------
     this->add_state("ARMING", std::make_unique<ArmingState>());
-    this->add_state("TAKEOFF", std::make_unique<TakeoffState>());
+    // DUAS decolagens, e a diferenca entre elas nao e cosmetica.
+    //
+    // TakeoffState() reancora o referencial do mundo na posicao atual do drone
+    // (setHomePosition). Isso e necessario na decolagem INICIAL, depois de
+    // armar, para que o EKF ja tenha convergido para o heading verdadeiro.
+    //
+    // Na REDECOLAGEM seria destrutivo: a origem do mundo pularia para a base
+    // recem-visitada, e a lista de bases, a grade de varredura e a posicao de
+    // casa passariam a se referir a um referencial que nao existe mais. Medido
+    // em SITL: o NED cru do PX4 ficou parado em (3.417, -0.159) o tempo todo --
+    // o drone nunca saiu do lugar -- enquanto o FRD da missao saltava de
+    // (-0.16, -3.03) para (0.00, 0.03) a cada redecolagem, e o drone pousava
+    // na mesma base indefinidamente.
+    this->add_state("TAKEOFF", std::make_unique<TakeoffState>(true));
+    this->add_state("TAKEOFF AGAIN", std::make_unique<TakeoffState>(false));
     this->add_state("SEARCH BASE", std::make_unique<SearchBaseState>());
     this->add_state("PRECISION ALIGN", std::make_unique<PrecisionAlignState>());
     this->add_state("PRECISION LANDING", std::make_unique<PrecisionLandingState>());
@@ -97,7 +112,7 @@ public:
     //
     //   ARMING → TAKEOFF → SEARCH BASE ⇄ PRECISION ALIGN → PRECISION LANDING
     //                           ↑                                  ↓
-    //                       TAKEOFF ←────────────────────── REGISTER BASE
+    //                   TAKEOFF AGAIN ←────────────────────── REGISTER BASE
     //                           ↓ (todas as bases feitas)
     //                      RETURN HOME → FINISHED
     //
@@ -134,7 +149,12 @@ public:
     });
 
     this->add_transitions("REGISTER BASE", {
-      {"REGISTERED", "TAKEOFF"},
+      {"REGISTERED", "TAKEOFF AGAIN"},
+      {"ERROR", "ERROR"}
+    });
+
+    this->add_transitions("TAKEOFF AGAIN", {
+      {"TAKEOFF COMPLETED", "SEARCH BASE"},
       {"ERROR", "ERROR"}
     });
 
@@ -185,6 +205,10 @@ public:
       {"position_tolerance", 0.15},
       {"align_tolerance", 0.10},
       {"detection_timeout", 5.0},
+      // Raio em que uma caixa reprojetada ainda conta como a MESMA base do
+      // ciclo anterior. Menor que a menor distancia entre duas bases da arena,
+      // ou o alvo caminha de base em base durante a descida.
+      {"target_association_radius", 1.0},
 
       // PID de alinhamento
       {"pid_pos_kp", 1.0},
@@ -193,6 +217,9 @@ public:
     };
 
     auto params = declareAndGetParameters(default_params);
+    association_radius_ = std::get<double>(params.at("target_association_radius"));
+    last_association_ = std::chrono::steady_clock::now();
+
     fsm_ = std::make_unique<Fase1FSM>(drone_, vision_, params);
 
     timer_ = this->create_wall_timer(
@@ -211,19 +238,7 @@ private:
     const auto pos = drone_->getLocalPosition();
     const auto orient = drone_->getOrientation();
 
-    // A idade da detecção é atualizada AQUI, e não pelo estado, porque só o nó
-    // conhece o relógio da visão. O PrecisionAlignState apenas a lê — foi o
-    // que permitiu que ele ficasse genérico, sem saber o que é uma câmera.
-    fsm_->blackboard_set<float>(
-      "align_target_age", static_cast<float>(vision_->secondsSinceDetection()));
-
-    // Enquanto há detecção, o alvo é reprojetado a cada ciclo: alinhar sobre
-    // uma estimativa congelada no instante da descoberta acumularia o erro de
-    // paralaxe conforme o drone desce.
-    vision_geometry::BoundingBox box;
-    if (vision_->closestBox(box)) {
-      fsm_->blackboard_set<Eigen::Vector3d>("align_target", vision_->project(pos, orient, box));
-    }
+    refreshAlignTarget(pos, orient);
 
     geometry_msgs::msg::PoseStamped ps;
     ps.header.stamp = this->now();
@@ -250,6 +265,69 @@ private:
     }
   }
 
+  /// Mantém `align_target` apontando para A MESMA base que o SearchBaseState
+  /// escolheu, reprojetada a cada ciclo.
+  ///
+  /// A versão anterior desta função escrevia, todo ciclo, a projeção da caixa
+  /// mais próxima do CENTRO DA IMAGEM. A intenção era boa — reprojetar evita
+  /// que a estimativa congelada no instante da descoberta acumule erro de
+  /// paralaxe conforme o drone desce — mas ela ignora qual base a busca
+  /// escolheu.
+  ///
+  /// O efeito medido em SITL: logo após redecolar de uma base, a caixa mais
+  /// central é a base de onde o drone acabou de sair. A busca anunciava
+  /// "Base NOVA em {-1.98, -0.88}", a 2,16 m, e meio segundo depois o
+  /// alinhamento reportava erro de 0,07 m — porque estava mirando outra coisa.
+  /// O drone pousava de novo na mesma base, indefinidamente.
+  ///
+  /// A correção é associar por PROXIMIDADE AO ALVO, não ao centro da imagem:
+  /// entre as caixas do quadro, vale a que projeta mais perto de onde o alvo
+  /// estava no ciclo anterior, e só se estiver dentro de um raio de associação.
+  void refreshAlignTarget(const Eigen::Vector3d & pos, const Eigen::Vector3d & orient)
+  {
+    // O SearchBaseState é quem ESCOLHE a base. Quando ele escreve um alvo novo,
+    // adotamos essa escolha e reiniciamos a associação.
+    if (auto * escolhido = fsm_->blackboard_get<Eigen::Vector3d>("align_target")) {
+      if (!have_target_ || (*escolhido - last_written_).norm() > 1e-9) {
+        target_ = *escolhido;
+        have_target_ = true;
+        last_association_ = std::chrono::steady_clock::now();
+      }
+    }
+
+    if (!have_target_) return;
+
+    // Entre as caixas deste quadro, a que projeta mais perto do alvo atual.
+    double melhor = std::numeric_limits<double>::max();
+    Eigen::Vector3d candidato = target_;
+    for (const auto & box : vision_->boxes()) {
+      const Eigen::Vector3d p = vision_->project(pos, orient, box);
+      const double d = (p.head<2>() - target_.head<2>()).norm();
+      if (d < melhor) {
+        melhor = d;
+        candidato = p;
+      }
+    }
+
+    // O portão é o que separa "reprojetei a mesma base" de "peguei a vizinha".
+    // Sem ele, uma base a dois metros seria adotada como se fosse a mesma, e o
+    // alvo caminharia de base em base durante a descida.
+    if (melhor <= association_radius_) {
+      target_ = candidato;
+      last_association_ = std::chrono::steady_clock::now();
+    }
+
+    fsm_->blackboard_set<Eigen::Vector3d>("align_target", target_);
+    last_written_ = target_;
+
+    // A idade agora conta o tempo sem ver ESTA base, e não sem ver base alguma.
+    // Com a contagem antiga, ficar olhando para a base vizinha mantinha a idade
+    // em zero e o PrecisionAlignState nunca desistia de um alvo já perdido.
+    const std::chrono::duration<double> idade =
+      std::chrono::steady_clock::now() - last_association_;
+    fsm_->blackboard_set<float>("align_target_age", static_cast<float>(idade.count()));
+  }
+
   std::map<std::string, std::variant<double, std::string>> declareAndGetParameters(
     const std::map<std::string, std::variant<double, std::string>> & defaults)
   {
@@ -273,6 +351,14 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   nav_msgs::msg::Path trajectory_;
   int log_counter_ = 0;
+
+  // Estado da associacao entre o alvo escolhido pela busca e as caixas do
+  // quadro atual. Ver refreshAlignTarget.
+  Eigen::Vector3d target_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d last_written_ = Eigen::Vector3d::Zero();
+  bool have_target_ = false;
+  double association_radius_ = 1.0;
+  std::chrono::steady_clock::time_point last_association_;
 };
 
 int main(int argc, const char * argv[])

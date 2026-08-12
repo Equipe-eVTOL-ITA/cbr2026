@@ -51,6 +51,12 @@ fase1_node:
     # chegou. O timeout de deteccao e maior porque a camera real perde quadros.
     position_tolerance: 0.25
     align_tolerance: 0.15
+    # Raio em que uma caixa reprojetada ainda conta como a MESMA base do
+    # ciclo anterior. Menor que a menor distancia entre duas bases da arena,
+    # ou o alvo caminha de base em base durante a descida.
+    # [VOO] Um pouco maior: a estimativa real oscila mais entre quadros.
+    target_association_radius: 1.2
+
     detection_timeout: 8.0
 
     # ===== PID de alinhamento =====
@@ -96,6 +102,15 @@ fase1_vision:
     camera_tz: 0.0
 
     bbox_real_size: 1.0
+
+    # Quanto o resultado do PnP pode se afastar do plano antes de ser
+    # descartado. Cobre a altura real das bases (max_base_height = 1,5 m) sem
+    # admitir absurdos: uma base saindo do quadro encolhe na imagem e o PnP
+    # le isso como distancia maior. Foi assim que a missao perseguiu uma base
+    # estimada a 10 m ABAIXO do solo para fora da arena.
+    # [VOO] Um pouco mais folgado: base real tem altura menos uniforme.
+    pnp_max_plane_deviation: 1.8
+    border_margin_px: 2.0
     bbox_is_normalized: true
     use_pnp: true
     mean_base_height: -0.75

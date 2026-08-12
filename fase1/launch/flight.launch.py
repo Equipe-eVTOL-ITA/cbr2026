@@ -23,6 +23,8 @@ def generate_launch_description():
              '/rosout',
              '/drone_trajectory',
              '/telemetry/drone_status',
+             '/telemetry/bases',
+             '/base_detector/detections',
              '/fmu/out/vehicle_local_position',
              '/fmu/out/vehicle_status',
              '/fmu/in/trajectory_setpoint'],
@@ -32,18 +34,31 @@ def generate_launch_description():
         package='drone_lib', executable='system_health',
         parameters=[params], output='screen')
 
+    # Em voo a imagem vem do camera_publisher, e nao de uma ponte do Gazebo.
+    # Confira o `image_topic` no flight.yaml: se ele nao casar com o topico que
+    # o camera_publisher realmente publica, o detector sobe, nao reclama e
+    # nunca recebe quadro -- a missao voa cega sem dizer por que.
+    camera = Node(
+        package='camera_publisher', executable='webcam_publisher',
+        parameters=[params], output='screen')
+
+    base_detector = Node(
+        package='base_detector', executable='base_detector',
+        parameters=[params], output='screen')
+
     mission = Node(
         package='fase1', executable='fase1',
         parameters=[params], output='screen')
-
-    # ACRESCENTE aqui os nos de visao desta missao, ex.:
-    # vision = Node(package='cv_nodes_algum', executable='detector', output='screen')
 
     return LaunchDescription([
         DeclareLaunchArgument('rviz', default_value='false',
                               description='Abrir o RViz2'),
         bag,
+        camera,
         system_health,
-        # A FSM espera 5 s para os outros nos subirem antes de comecar.
+        base_detector,
+        # A FSM espera 5 s para os outros nos subirem antes de comecar. Sem
+        # isso ela decola antes de o detector estar pronto e varre o primeiro
+        # trecho da grade cega.
         TimerAction(period=5.0, actions=[mission]),
     ])

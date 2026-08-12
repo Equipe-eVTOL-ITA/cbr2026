@@ -1,22 +1,150 @@
-# Parametros da missao fase1 — perfil: flight
+# Parametros da missao fase1 — perfil: VOO REAL
 #
-# Estes valores sobrescrevem os padroes do codigo. Trocar de simulacao para
-# voo real deve ser trocar de arquivo aqui, nunca editar o .cpp.
+# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
+# As diferencas reais entre este arquivo e o simulation.yaml estao marcadas com
+# [VOO]; o resto e igual de proposito.
+#
+# ANTES DO PRIMEIRO VOO, tres coisas TEM de ser conferidas neste arquivo:
+#
+#   1. Os intrinsecos da camera, medidos com o camera_calibrator. Os do
+#      simulation.yaml sao derivados do FOV de uma camera ideal e nao servem.
+#   2. As faixas HSV, conferidas na iluminacao do dia -- a base sob sol de meio
+#      dia e sob ceu nublado nao tem a mesma saturacao.
+#   3. A posicao de casa, que em voo raramente e a origem.
+
 fase1_node:
   ros__parameters:
-    # Decolagem (NED: altura negativa e para cima)
+    # ===== Casa ficticia (FRD: z negativo e para cima) =====
+    # [VOO] Ajustar ao ponto de decolagem real na arena.
+    fictual_home_x: 0.0
+    fictual_home_y: 0.0
+    fictual_home_z: -0.6
+
+    # ===== Prova =====
+    num_bases: 6.0
+    known_base_radius: 1.5
+
+    # ===== Grade de varredura (serpentina) =====
+    grid_y_length: -6.0
+    grid_step_x: 2.0
+    grid_num_steps: 3.0
+
+    # ===== Altitudes (FRD, negativas) =====
     takeoff_height: -2.5
-    max_vertical_velocity: 1.2
-    position_tolerance: 0.15
+    align_height: -2.0
+    max_base_height: -1.5
+    mean_base_height: -0.75
 
-    # Pouso
-    landing_velocity_max: 0.5
+    # ===== Velocidades =====
+    # [VOO] Mais conservadoras que na simulacao. O drone real tem inercia,
+    # vento e um custo de queda que a simulacao nao tem. Cada decimo aqui e
+    # tempo de prova, mas o primeiro voo do dia nao e hora de otimizar.
+    max_vertical_velocity: 0.8
+    max_horizontal_velocity: 0.7
+    landing_velocity_max: 0.35
     landing_velocity_min: 0.15
-    max_base_height: 0.5
-    landing_timeout: 5.0
+    align_descent_velocity: 0.10
 
-    # Movimento horizontal
-    max_horizontal_velocity: 1.5
+    # ===== Tolerancias e tempos =====
+    # [VOO] Tolerancias mais folgadas: a posicao vem de GPS/VIO com ruido, e
+    # exigir 10 cm de um estimador que oscila 15 faz o drone nunca declarar que
+    # chegou. O timeout de deteccao e maior porque a camera real perde quadros.
+    position_tolerance: 0.25
+    align_tolerance: 0.15
+    detection_timeout: 8.0
+
+    # ===== PID de alinhamento =====
+    # [VOO] Ganho proporcional menor: com atraso de sensor e inercia reais, o
+    # ganho da simulacao oscila em torno do alvo em vez de convergir.
+    pid_pos_kp: 0.7
+    pid_pos_ki: 0.01
+    pid_pos_kd: 0.08
+
+# ===========================================================================
+# No de visao da missao: projecao pixel -> mundo
+# ===========================================================================
+fase1_vision:
+  ros__parameters:
+    detection_topic: '/base_detector/detections'
+
+    # [VOO] Intrinsecos MEDIDOS, nao derivados do FOV. Rode o camera_calibrator
+    # com a camera que vai voar e cole os valores aqui. Uma lente real tem
+    # distorcao e centro optico deslocado; tratar isso como pinhole ideal
+    # produz erro de posicao que cresce com a distancia ao centro da imagem --
+    # justamente onde a base aparece quando o drone se aproxima.
+    #
+    # Os valores abaixo sao PLACEHOLDER e precisam ser substituidos.
+    camera_fx: 0.0          # 0 = cai no FOV abaixo; TROQUE pelos medidos
+    camera_fy: 0.0
+    camera_cx: 0.0
+    camera_cy: 0.0
+    camera_hfov: 1.047
+    camera_width: 640
+    camera_height: 480
+    published_size: 480     # o camera_publisher recorta ao centro e redimensiona
+
+    # ===== Extrinsecos: pose da camera no CORPO (FRD) =====
+    # Mesma convencao do simulation.yaml -- ver os comentarios la.
+    # [VOO] Se a camera do drone real estiver montada em outra orientacao, e
+    # AQUI que se corrige, nao no codigo. Um erro aqui nao aparece como falha:
+    # aparece como o drone alinhando ao lado da base.
+    camera_roll: 0.0
+    camera_pitch: 0.0
+    camera_yaw: 1.570796327
+    camera_tx: 0.0
+    camera_ty: 0.0
+    camera_tz: 0.0
+
+    bbox_real_size: 1.0
+    bbox_is_normalized: true
+    use_pnp: true
+    mean_base_height: -0.75
+
+# ===========================================================================
+# Detector de bases
+# ===========================================================================
+base_detector:
+  ros__parameters:
+    # [VOO] Publicado pelo camera_publisher, nao pela ponte do Gazebo.
+    image_topic: '/vertical_camera/image/compressed'
+    detection_topic: '/base_detector/detections'
+
+    # [VOO] Frequencia menor: a Jetson e a Raspberry dividem CPU com a FSM, a
+    # telemetria e o PX4. Processar todo quadro rouba ciclo do controle.
+    processing_frequency: 8.0
+
+    # [VOO] Debug de mascara desligado. Cada imagem publicada e banda de radio
+    # e CPU gastas durante a prova; o bbox fica ligado, em taxa baixa, porque
+    # e o unico jeito de diagnosticar deteccao depois do voo.
+    debug_image: true
+    debug_mask: false
+    debug_publish_rate: 2.0
+    debug_max_width: 320
+    debug_jpeg_quality: 50
+
+    # [VOO] Faixas HSV mais LARGAS que as da simulacao. A base renderizada tem
+    # cor uniforme; a lona real tem sombra, brilho especular e desbotamento, e
+    # uma faixa estreita demais faz a base sumir justamente quando o drone
+    # chega perto e a propria sombra dele cai sobre ela.
+    #
+    # CONFERIR NA ILUMINACAO DO DIA antes do primeiro voo.
+    blue_lower: [95, 60, 40]
+    blue_upper: [135, 255, 255]
+    yellow_lower: [8, 80, 80]
+    yellow_upper: [45, 255, 255]
+
+    blue_kernel_size: 5
+    blue_iterations: 3
+    yellow_kernel_size: 3
+    yellow_iterations: 2
+
+    combination_kernel_size: 15
+    combination_iterations: 2
+    combined_min_area: 0.001
+    combined_max_area: 1.0
+    combined_aspect_ratio_max: 2.0
+    min_pixels_per_color: 100
+    nms_center_distance_threshold: 0.1
 
 # O system_health do drone_lib tambem le deste arquivo.
 system_health:

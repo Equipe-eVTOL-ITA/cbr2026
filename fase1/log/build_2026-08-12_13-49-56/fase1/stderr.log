@@ -1,0 +1,16 @@
+CMake Error at CMakeLists.txt:16 (find_package):
+  By not providing "Findfsm.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "fsm", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "fsm" with any of
+  the following names:
+
+    fsmConfig.cmake
+    fsm-config.cmake
+
+  Add the installation prefix of "fsm" to CMAKE_PREFIX_PATH or set "fsm_DIR"
+  to a directory containing one of the above files.  If "fsm" provides a
+  separate development package or SDK, be sure it has been installed.
+
+

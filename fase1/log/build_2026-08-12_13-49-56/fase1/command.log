@@ -1,0 +1,2 @@
+Invoking command in '/home/marconipavan/evtol/dev/src/cbr2026/fase1/build/fase1': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/marconipavan/evtol/dev/src/cbr2026/fase1 -DCMAKE_INSTALL_PREFIX=/home/marconipavan/evtol/dev/src/cbr2026/fase1/install/fase1
+Invoked command in '/home/marconipavan/evtol/dev/src/cbr2026/fase1/build/fase1' returned '1': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/marconipavan/evtol/dev/src/cbr2026/fase1 -DCMAKE_INSTALL_PREFIX=/home/marconipavan/evtol/dev/src/cbr2026/fase1/install/fase1

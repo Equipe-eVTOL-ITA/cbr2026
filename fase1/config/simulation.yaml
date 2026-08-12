@@ -1,22 +1,145 @@
-# Parametros da missao fase1 — perfil: simulation
+# Parametros da missao fase1 — perfil: SIMULACAO
 #
-# Estes valores sobrescrevem os padroes do codigo. Trocar de simulacao para
-# voo real deve ser trocar de arquivo aqui, nunca editar o .cpp.
+# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
+# As diferencas reais entre este arquivo e o flight.yaml estao marcadas com
+# [SIM]; o resto e igual de proposito.
+
 fase1_node:
   ros__parameters:
-    # Decolagem (NED: altura negativa e para cima)
+    # ===== Casa ficticia (FRD: z negativo e para cima) =====
+    fictual_home_x: 0.0
+    fictual_home_y: 0.0
+    fictual_home_z: -0.6
+
+    # ===== Prova =====
+    num_bases: 6.0
+    # Raio em que uma deteccao e considerada a MESMA base ja visitada. Grande
+    # demais funde duas bases vizinhas numa so; pequeno demais faz o drone
+    # pousar duas vezes na mesma. Deve ficar entre o tamanho da base e a menor
+    # distancia entre duas bases da arena.
+    known_base_radius: 1.5
+
+    # ===== Grade de varredura (serpentina) =====
+    grid_y_length: -6.0     # assinado: negativo varre para a esquerda
+    grid_step_x: 2.0
+    grid_num_steps: 3.0
+
+    # ===== Altitudes (FRD, negativas) =====
     takeoff_height: -2.5
+    align_height: -2.0
+    max_base_height: -1.5
+    mean_base_height: -0.75
+
+    # ===== Velocidades =====
+    # [SIM] Mais rapido que em voo: sem vento, sem risco de dano, e o tempo de
+    # simulacao e caro em iteracao de desenvolvimento.
     max_vertical_velocity: 1.2
-    position_tolerance: 0.15
-
-    # Pouso
+    max_horizontal_velocity: 1.0
     landing_velocity_max: 0.5
-    landing_velocity_min: 0.15
-    max_base_height: 0.5
-    landing_timeout: 5.0
+    landing_velocity_min: 0.2
+    align_descent_velocity: 0.15
 
-    # Movimento horizontal
-    max_horizontal_velocity: 1.5
+    # ===== Tolerancias e tempos =====
+    position_tolerance: 0.15
+    align_tolerance: 0.10
+    detection_timeout: 5.0
+
+    # ===== PID de alinhamento =====
+    # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
+    # folga sobre o timer de 50 ms da FSM. Iguala-lo a 0.05 faz o PidController
+    # devolver zeros intermitentes, que parecem sintonia ruim.
+    pid_pos_kp: 1.0
+    pid_pos_ki: 0.01
+    pid_pos_kd: 0.05
+
+# ===========================================================================
+# No de visao da missao: projecao pixel -> mundo
+# ===========================================================================
+fase1_vision:
+  ros__parameters:
+    detection_topic: '/base_detector/detections'
+
+    # [SIM] Intrinsecos DERIVADOS do FOV, porque a camera da simulacao e
+    # perfeita e o SDF ja diz o FOV exato. Em voo, use fx/fy/cx/cy medidos pelo
+    # camera_calibrator: uma lente real nao e um pinhole.
+    #
+    # Valores de PX4-gazebo-models/models/vertical_camera/model.sdf.
+    camera_fx: 0.0          # 0 = derivar do FOV abaixo
+    camera_fy: 0.0          # ignorados enquanto camera_fx for 0; presentes para
+    camera_cx: 0.0          # que os dois perfis tenham as MESMAS chaves e o
+    camera_cy: 0.0          # `diff` entre eles mostre so o que muda de fato
+    camera_hfov: 1.047      # rad (60 graus)
+    camera_width: 800
+    camera_height: 800
+    published_size: 800
+
+    # ===== Extrinsecos: pose da camera no CORPO (FRD) =====
+    # R_b_c = Rz(yaw)*Ry(pitch)*Rx(roll) leva vetores da camera para o corpo.
+    #
+    # yaw = pi/2 e a montagem em que o TOPO da imagem aponta para a FRENTE do
+    # drone:
+    #     imagem +x -> corpo +Y (direita)
+    #     imagem +y -> corpo -X (tras)
+    #     eixo optico +Z_cam -> corpo +Z (baixo)
+    #
+    # CUIDADO: extrinsecos NULOS tambem dao uma camera olhando para baixo, mas
+    # girada 90 graus -- a direita da imagem viraria a frente do drone. Os dois
+    # "olham para baixo"; um mede tudo 90 graus fora de lugar, sem erro nenhum.
+    # Os configs de 2025 discordavam entre si exatamente aqui.
+    camera_roll: 0.0
+    camera_pitch: 0.0
+    camera_yaw: 1.570796327
+    camera_tx: 0.0
+    camera_ty: 0.0
+    camera_tz: 0.0
+
+    # Lado real do quadrado da base, em metros. E o que permite ao PnP
+    # recuperar a distancia sem supor a altura do alvo.
+    bbox_real_size: 1.0
+    bbox_is_normalized: true
+    use_pnp: true
+    mean_base_height: -0.75
+
+# ===========================================================================
+# Detector de bases
+# ===========================================================================
+base_detector:
+  ros__parameters:
+    # [SIM] Topico vindo da ponte ros_gz_image, que publica <topico>/compressed
+    # a partir do sensor do Gazebo. Em voo o publisher e o camera_publisher.
+    image_topic: '/vertical_camera/compressed'
+    detection_topic: '/base_detector/detections'
+
+    # [SIM] Frequencia maior: a maquina de desenvolvimento tem folga de CPU que
+    # a Jetson e a Raspberry nao tem.
+    processing_frequency: 15.0
+
+    # [SIM] Debug ligado: aqui ha tela e ninguem esta voando de verdade.
+    debug_image: true
+    debug_mask: true
+    debug_publish_rate: 5.0
+    debug_max_width: 320
+    debug_jpeg_quality: 60
+
+    # [SIM] Faixas HSV da base renderizada pelo Gazebo, que sao mais saturadas
+    # e uniformes do que as de uma lona sob sol. Em voo elas sao mais largas.
+    blue_lower: [100, 80, 50]
+    blue_upper: [130, 255, 255]
+    yellow_lower: [10, 100, 100]
+    yellow_upper: [40, 255, 255]
+
+    blue_kernel_size: 5
+    blue_iterations: 3
+    yellow_kernel_size: 3
+    yellow_iterations: 2
+
+    combination_kernel_size: 15
+    combination_iterations: 2
+    combined_min_area: 0.001
+    combined_max_area: 1.0
+    combined_aspect_ratio_max: 2.0
+    min_pixels_per_color: 100
+    nms_center_distance_threshold: 0.1
 
 # O system_health do drone_lib tambem le deste arquivo.
 system_health:

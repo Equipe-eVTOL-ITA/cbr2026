@@ -1,0 +1,133 @@
+# Parametros da missao fase3 — perfil: SIMULACAO
+#
+# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
+# As diferencas reais entre este arquivo e o flight.yaml estao marcadas com
+# [SIM]; o resto e igual de proposito.
+#
+# ATENCAO AO ARRANJO. Em voo o processamento NAO e embarcado: a camera fica no
+# drone e a imagem comprimida atravessa a rede ate o computador de solo. Na
+# simulacao tudo roda numa maquina so, e a camera e uma WEBCAM LOCAL fazendo o
+# papel da camera do drone -- o Gazebo nao renderiza uma mao.
+
+fase3_node:
+  ros__parameters:
+    # ===== Casa ficticia (FRD: z negativo e para cima) =====
+    fictual_home_x: 0.0
+    fictual_home_y: 0.0
+    fictual_home_z: -0.6
+
+    # ===== Decolagem =====
+    # Mais baixo que a fase 1: o drone precisa ficar na altura do operador para
+    # enxergar a mao, e nao sobrevoando a arena.
+    takeoff_height: -1.8
+    max_vertical_velocity: 1.0
+    position_tolerance: 0.15
+
+    # ===== Pouso =====
+    # A altura de PARTIDA nao esta aqui de proposito: o PrecisionLandingState a
+    # mede ao entrar no estado. O drone pousa de onde o gesto o deixou, que e
+    # qualquer altura, entao um valor fixo calcularia o perfil para uma queda
+    # que nao existe. Ver stdstates v0.3.0.
+    landing_velocity_max: 0.5
+    landing_velocity_min: 0.2
+    max_base_height: -0.2
+
+    # ===== Retorno e desarme =====
+    return_home_timeout: 30.0
+    disarm_grace: 3.0
+    disarm_timeout: 20.0
+
+    # ===== Busca da mao =====
+    # Gira 60 graus para cada lado procurando a palma aberta.
+    yaw_speed: 0.35
+    search_yaw_range: 1.0472
+    # Ciclos consecutivos com o gesto antes de aceitar. Girar passa a mao pelo
+    # quadro de raspao; sem confirmacao, um unico quadro mal classificado para
+    # a busca no lugar errado.
+    search_confirm_cycles: 5.0
+
+    # ===== Controle por gestos =====
+    # [SIM] Mais rapido que em voo: sem vento e sem risco de dano.
+    control_speed: 0.4
+    max_horizontal_velocity: 1.0
+    # Segundos sem posicao de mao antes de voltar a procurar.
+    detection_timeout: 3.0
+    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA. Alto de
+    # proposito: sao os dois comandos irreversiveis desta fase, e a 20 Hz isto
+    # e meio segundo de intencao clara. Os direcionais nao precisam de
+    # confirmacao, porque se corrigem sozinhos no ciclo seguinte.
+    command_confirm_cycles: 10.0
+
+    # ===== PID de guinada (mantem a mao centrada em x) =====
+    # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
+    # folga sobre o timer de 50 ms da FSM.
+    yaw_pid_kp: 0.6
+    yaw_pid_ki: 0.0
+    yaw_pid_kd: 0.06
+
+    # ===== PID de altitude (mantem a mao centrada em y) =====
+    climb_pid_kp: 0.9
+    climb_pid_ki: 0.0
+    climb_pid_kd: 0.09
+
+# ===========================================================================
+# No de visao da missao
+# ===========================================================================
+fase3_gesture:
+  ros__parameters:
+    gesture_topic: '/gesture_detector/gestures'
+    hand_topic: '/gesture_detector/hand_location'
+
+    # Qual mao manda. O gesture_detector publica sempre num_hands posicoes, com
+    # string vazia onde nao houve gesto, entao o indice identifica a mao de
+    # verdade -- o que NAO era o caso em 2025, e era a causa da incoerencia
+    # entre a busca (que lia [0]) e o controle (que lia [1]).
+    controlling_hand: 0
+
+# ===========================================================================
+# Reconhecimento de gestos
+# ===========================================================================
+gesture_detector:
+  ros__parameters:
+    # [SIM] Webcam local publicando no lugar da camera do drone.
+    image_topic: '/camera/image/compressed'
+
+    num_hands: 2
+
+    # [SIM] Frequencia alta: tudo roda numa maquina so, sem rede no meio.
+    processing_frequency: 15.0
+
+    min_hand_detection_confidence: 0.5
+    min_hand_presence_confidence: 0.5
+    min_tracking_confidence: 0.5
+
+    # Debounce interno do detector, usado na sobreposicao de debug. A decisao
+    # que importa -- aceitar um comando -- e da missao, em
+    # command_confirm_cycles.
+    gesture_debounce: 5
+
+    # [SIM] Debug ligado: aqui ha tela e ninguem esta voando de verdade.
+    debug_image: true
+    debug_mask: false
+    debug_publish_rate: 5.0
+    debug_max_width: 480
+    debug_jpeg_quality: 70
+
+# ===========================================================================
+# Camera
+# ===========================================================================
+webcam_publisher:
+  ros__parameters:
+    # [SIM] A webcam da maquina de desenvolvimento faz o papel da camera do
+    # drone. Ajuste video_source se a sua nao for /dev/video0.
+    camera_name: 'camera'
+    use_compressed: true
+    video_source: '/dev/video0'
+    width: 640
+    height: 480
+    fps: 15
+
+# O system_health do drone_lib tambem le deste arquivo.
+system_health:
+  ros__parameters:
+    publish_rate: 1.0

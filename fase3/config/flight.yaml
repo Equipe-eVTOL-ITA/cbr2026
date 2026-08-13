@@ -1,0 +1,159 @@
+# Parametros da missao fase3 — perfil: VOO REAL
+#
+# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
+# As diferencas reais entre este arquivo e o simulation.yaml estao marcadas com
+# [VOO]; o resto e igual de proposito.
+#
+# ATENCAO AO ARRANJO. O processamento NAO e embarcado:
+#
+#   DRONE                                COMPUTADOR DE SOLO
+#     camera_publisher
+#       /camera/image/compressed  --rede-->  gesture_detector
+#                                                 |
+#                                              fase3 (FSM)
+#       <----- /fmu/in/trajectory_setpoint --------
+#
+# Ou seja: a imagem comprimida ATRAVESSA A REDE. processing_frequency e a
+# qualidade do JPEG deixam de ser orcamento de CPU e passam a ser de BANDA.
+# Meca antes de subir os valores:
+#
+#     ros2 topic bw /camera/image/compressed
+#
+# ANTES DO PRIMEIRO VOO, confira:
+#   1. a banda disponivel no enlace, com o comando acima;
+#   2. o video_source da camera do drone;
+#   3. a posicao de casa, que em voo raramente e a origem.
+
+fase3_node:
+  ros__parameters:
+    # ===== Casa ficticia (FRD: z negativo e para cima) =====
+    # [VOO] Ajustar ao ponto de decolagem real.
+    fictual_home_x: 0.0
+    fictual_home_y: 0.0
+    fictual_home_z: -0.6
+
+    # ===== Decolagem =====
+    # Mais baixo que a fase 1: o drone precisa ficar na altura do operador para
+    # enxergar a mao, e nao sobrevoando a arena.
+    takeoff_height: -1.8
+    # [VOO] Mais conservador: o drone real tem inercia e o operador esta perto.
+    max_vertical_velocity: 0.7
+    position_tolerance: 0.25
+
+    # ===== Pouso =====
+    # A altura de PARTIDA nao esta aqui de proposito: o PrecisionLandingState a
+    # mede ao entrar no estado. O drone pousa de onde o gesto o deixou, que e
+    # qualquer altura, entao um valor fixo calcularia o perfil para uma queda
+    # que nao existe. Ver stdstates v0.3.0.
+    landing_velocity_max: 0.35
+    landing_velocity_min: 0.15
+    max_base_height: -0.2
+
+    # ===== Retorno e desarme =====
+    return_home_timeout: 30.0
+    disarm_grace: 3.0
+    disarm_timeout: 20.0
+
+    # ===== Busca da mao =====
+    # Gira 60 graus para cada lado procurando a palma aberta.
+    # [VOO] Gira mais devagar: a imagem chega pela rede com atraso, e girar
+    # rapido faz a mao atravessar o quadro entre dois quadros processados.
+    yaw_speed: 0.25
+    search_yaw_range: 1.0472
+    # Ciclos consecutivos com o gesto antes de aceitar. Girar passa a mao pelo
+    # quadro de raspao; sem confirmacao, um unico quadro mal classificado para
+    # a busca no lugar errado.
+    search_confirm_cycles: 5.0
+
+    # ===== Controle por gestos =====
+    # [VOO] Mais lento: o drone real tem inercia, ha vento, e o operador esta
+    # a poucos metros.
+    control_speed: 0.25
+    max_horizontal_velocity: 0.6
+    # [VOO] Mais tolerante: a camera real perde quadros e a rede atrasa.
+    detection_timeout: 5.0
+    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA. Alto de
+    # proposito: sao os dois comandos irreversiveis desta fase, e a 20 Hz isto
+    # e meio segundo de intencao clara. Os direcionais nao precisam de
+    # confirmacao, porque se corrigem sozinhos no ciclo seguinte.
+    command_confirm_cycles: 10.0
+
+    # ===== PID de guinada (mantem a mao centrada em x) =====
+    # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
+    # folga sobre o timer de 50 ms da FSM.
+    # [VOO] Ganho menor: com o atraso da rede somado ao do sensor, o ganho da
+    # simulacao oscila em torno do alvo em vez de convergir.
+    yaw_pid_kp: 0.4
+    yaw_pid_ki: 0.0
+    yaw_pid_kd: 0.08
+
+    # ===== PID de altitude (mantem a mao centrada em y) =====
+    climb_pid_kp: 0.6
+    climb_pid_ki: 0.0
+    climb_pid_kd: 0.12
+
+# ===========================================================================
+# No de visao da missao
+# ===========================================================================
+fase3_gesture:
+  ros__parameters:
+    gesture_topic: '/gesture_detector/gestures'
+    hand_topic: '/gesture_detector/hand_location'
+
+    # Qual mao manda. O gesture_detector publica sempre num_hands posicoes, com
+    # string vazia onde nao houve gesto, entao o indice identifica a mao de
+    # verdade -- o que NAO era o caso em 2025, e era a causa da incoerencia
+    # entre a busca (que lia [0]) e o controle (que lia [1]).
+    controlling_hand: 0
+
+# ===========================================================================
+# Reconhecimento de gestos
+# ===========================================================================
+gesture_detector:
+  ros__parameters:
+    # [VOO] Mesmo topico, mas publicado PELO DRONE e recebido pela rede.
+    image_topic: '/camera/image/compressed'
+
+    num_hands: 2
+
+    # [VOO] Frequencia menor: cada quadro processado e um quadro que teve de
+    # atravessar a rede. Meca com `ros2 topic bw` antes de subir este valor.
+    processing_frequency: 8.0
+
+    min_hand_detection_confidence: 0.5
+    min_hand_presence_confidence: 0.5
+    min_tracking_confidence: 0.5
+
+    # Debounce interno do detector, usado na sobreposicao de debug. A decisao
+    # que importa -- aceitar um comando -- e da missao, em
+    # command_confirm_cycles.
+    # [VOO] Debounce maior: menos quadros por segundo chegando.
+    gesture_debounce: 4
+
+    # [VOO] Debug em taxa baixa. A imagem anotada e a unica forma de
+    # diagnosticar deteccao depois do voo, mas cada quadro dela disputa banda
+    # com o stream que a missao precisa.
+    debug_image: true
+    debug_mask: false
+    debug_publish_rate: 2.0
+    debug_max_width: 320
+    debug_jpeg_quality: 50
+
+# ===========================================================================
+# Camera
+# ===========================================================================
+webcam_publisher:
+  ros__parameters:
+    # [VOO] A camera do DRONE. Confira o video_source no companion.
+    camera_name: 'camera'
+    use_compressed: true
+    video_source: '/dev/video0'
+    width: 640
+    height: 480
+    # [VOO] Menor: o gargalo e a rede, nao a captura.
+    fps: 10
+
+# O system_health do drone_lib tambem le deste arquivo.
+system_health:
+  ros__parameters:
+    publish_rate: 1.0

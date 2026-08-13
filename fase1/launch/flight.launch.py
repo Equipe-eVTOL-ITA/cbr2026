@@ -39,7 +39,7 @@ def generate_launch_description():
     # o camera_publisher realmente publica, o detector sobe, nao reclama e
     # nunca recebe quadro -- a missao voa cega sem dizer por que.
     camera = Node(
-        package='camera_publisher', executable='webcam_publisher',
+        package='camera_publisher', executable='webcam',
         parameters=[params], output='screen')
 
     base_detector = Node(

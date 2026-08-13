@@ -106,13 +106,21 @@ jobs:
         run: |
           source /opt/ros/${{ matrix.distro }}/setup.bash
           pkgs=$(colcon list --names-only --base-paths "src/${{ github.event.repository.name }}" | tr '\n' ' ')
-          # Os testes de logica pura de cada fase. A expressao regular casa
-          # test_grid (fase 1) e test_gesture_commands (fase 3).
+          # Todo teste cujo nome comeca com `test_`, por CONVENCAO e nao por
+          # lista.
           #
-          # ACRESCENTE o seu ao criar uma fase nova: no cv_nodes esta mesma
-          # lista ja deixou um pacote inteiro sem teste rodando, com o CI verde.
+          # Aqui havia uma lista fixa de nomes, e ela ja falhou tres vezes nesta
+          # organizacao: no cv_nodes um pacote inteiro ficou sem teste rodando
+          # com o CI verde, e aqui aconteceria de novo com a primeira fase em
+          # BT. Uma lista que precisa ser lembrada e uma lista que sera
+          # esquecida.
+          #
+          # `^test_` nao casa com os linters do ament (cpplint, uncrustify,
+          # xmllint, lint_cmake, copyright), que e o motivo de o filtro existir:
+          # eles reprovam num codigo que nunca teve lint, e liga-los de uma vez
+          # produziria uma parede de ruido.
           colcon test --packages-select $pkgs --event-handlers console_direct+ \
-            --ctest-args -R 'test_grid|test_gesture_commands'
+            --ctest-args -R '^test_'
           colcon test-result --verbose
 
   # ---------------------------------------------------------------------------

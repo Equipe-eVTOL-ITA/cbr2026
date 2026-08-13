@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!--
+  Arvore da missao fase4.
+
+  Este arquivo e INSTALADO no share/fase4/trees/ e carregado em tempo de
+  execucao. Editar aqui e relancar muda a missao SEM RECOMPILAR -- e e o que
+  permite abrir a arvore no Groot2 e edita-la visualmente.
+
+  Qual arvore carregar e parametro (tree_file), entao simulacao e voo podem
+  usar arvores diferentes.
+
+  ATENCAO: nome de no errado aqui NAO e erro de compilacao. Ele aparece so ao
+  carregar. O test/test_tree.cpp existe exatamente para pegar isso no CI.
+
+  Nos disponiveis sem escrever codigo (do stdbt):
+
+    <Arming/>              arma
+    <Takeoff/>             decola E reancora o referencial do mundo
+    <TakeoffAgain/>        decola SEM reancorar (use na redecolagem)
+    <GoTo/>                vai ate target_x/y/z/yaw da blackboard
+    <PrecisionLanding/>    descida exponencial
+    <ReturnHome/>          volta para casa em duas fases
+    <LandAndDisarm/>       pousa e desarma
+
+    <BlackboardBool chave="..."/>
+    <BlackboardMenorQue chave="..." limite="..."/>
+
+  E os compositores da propria BT: Sequence, Fallback, Parallel, Retry,
+  Timeout, Inverter. Veja https://www.behaviortree.dev
+-->
+<root BTCPP_format="4">
+  <BehaviorTree ID="Principal">
+    <Sequence>
+      <Arming/>
+      <Takeoff/>
+      <PrecisionLanding/>
+    </Sequence>
+  </BehaviorTree>
+</root>

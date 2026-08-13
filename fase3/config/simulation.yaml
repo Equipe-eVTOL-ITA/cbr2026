@@ -90,7 +90,7 @@ fase3_gesture:
 gesture_detector:
   ros__parameters:
     # [SIM] Webcam local publicando no lugar da camera do drone.
-    image_topic: '/camera/image/compressed'
+    image_topic: '/frontal_camera/compressed'
 
     num_hands: 2
 
@@ -118,14 +118,36 @@ gesture_detector:
 # ===========================================================================
 webcam_publisher:
   ros__parameters:
-    # [SIM] A webcam da maquina de desenvolvimento faz o papel da camera do
-    # drone. Ajuste video_source se a sua nao for /dev/video0.
-    camera_name: 'camera'
+    # ATENCAO AO NOME DO TOPICO.
+    #
+    # O webcam_publisher publica em `<camera_name>_camera/compressed`, e nao em
+    # `<camera_name>/image/compressed`. Com camera_name: 'camera' o topico vira
+    # `camera_camera/compressed` -- foi exatamente o que aconteceu na primeira
+    # tentativa, e o gesture_detector, assinando outro nome, nunca recebeu um
+    # quadro. Nao havia erro: a camera publicava, o detector esperava, e o drone
+    # girava para sempre procurando uma mao.
+    #
+    # O `image_topic` do gesture_detector acima TEM de casar com o que sai
+    # daqui. Se trocar um, troque o outro.
+    #
+    # (Os publicadores do camera_publisher nao seguem a mesma convencao entre
+    # si: o `oak` e o `jetson` publicam em `camera/image/compressed`, o
+    # `raspicam` em `vertical_camera/image/compressed`. Confira o do seu
+    # hardware antes de mudar.)
+    camera_name: 'frontal'
     use_compressed: true
     video_source: '/dev/video0'
-    width: 640
-    height: 480
-    fps: 15
+
+    # Os nomes destes parametros sao os que o no DECLARA. Escrever `width`,
+    # `height` ou `fps` nao da erro: o ROS ignora chave nao declarada, e o no
+    # sobe com os padroes dele. Foi o segundo erro da primeira tentativa.
+    frame_width: 640
+    frame_height: 480
+    publish_rate: 15.0
+    jpeg_quality: 70
+
+    horizontal_flip: true
+    vertical_flip: false
 
 # O system_health do drone_lib tambem le deste arquivo.
 system_health:

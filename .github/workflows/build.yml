@@ -72,12 +72,38 @@ jobs:
           PY
           vcs import --shallow src < deps.repos
 
+      # -----------------------------------------------------------------------
+      # O rosdep continua NÃO sendo bloqueante -- ele erra por conta própria com
+      # frequência, e travar o CI nisso custaria mais do que resolve.
+      #
+      # Mas ele para no primeiro problema. Uma única chave que não resolve faz
+      # com que NENHUMA dependência de apt seja instalada, e o `|| echo` mandava
+      # isso para o build sem dizer o que tinha faltado. O sintoma era um erro
+      # de CMake três passos adiante, em outro pacote:
+      #
+      #     Could NOT find ZeroMQ (missing: ZeroMQ_LIBRARIES ...)
+      #
+      # Nada ali aponta para a causa, que era um pacote do workspace ausente do
+      # manifesto. Aqui o log passa a nomear as chaves que faltaram, no lugar
+      # onde o problema realmente aconteceu.
+      # -----------------------------------------------------------------------
       - name: rosdep
         run: |
           rosdep update --rosdistro ${{ matrix.distro }}
-          rosdep install --from-paths src --ignore-src -y \
-            --rosdistro ${{ matrix.distro }} || \
-            echo "::warning::rosdep reportou erros; seguindo para o build"
+          if ! rosdep install --from-paths src --ignore-src -y \
+               --rosdistro ${{ matrix.distro }} 2>&1 | tee rosdep.log; then
+            faltando=$(grep -oP "Cannot locate rosdep definition for \[\K[^]]+" \
+                       rosdep.log | sort -u | tr '\n' ' ')
+            if [ -n "$faltando" ]; then
+              echo "::error::rosdep parou: chave(s) sem definicao: $faltando."
+              echo "::error::O rosdep para na PRIMEIRA falha, entao NENHUMA"
+              echo "::error::dependencia de apt foi instalada. Se isto for um"
+              echo "::error::pacote do workspace, ele falta no evtol.repos do"
+              echo "::error::evtol-dev -- o CI busca o manifesto do main de la."
+            else
+              echo "::warning::rosdep reportou erros; seguindo para o build"
+            fi
+          fi
 
       - name: Compilar
         shell: bash

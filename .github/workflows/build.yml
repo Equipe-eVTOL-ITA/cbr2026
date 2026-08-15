@@ -88,6 +88,12 @@ jobs:
       # onde o problema realmente aconteceu.
       # -----------------------------------------------------------------------
       - name: rosdep
+        # `shell: bash` porque o padrao dos passos é `sh -e`, e o `sh` do
+        # Ubuntu é o dash, que NÃO tem `set -o pipefail`. Sem esta linha o
+        # subshell abaixo morre na primeira instrução, o `if !` vira verdadeiro
+        # por motivo errado, e nada do diagnóstico aparece. Também descoberto
+        # pelo CI, depois de eu já ter "corrigido" este passo duas vezes.
+        shell: bash
         run: |
           rosdep update --rosdistro ${{ matrix.distro }}
 

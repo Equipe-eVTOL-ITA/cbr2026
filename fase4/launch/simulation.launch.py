@@ -18,12 +18,22 @@ def generate_launch_description():
 
     # Grava um rosbag de cada voo. Depois de uma missao que deu errado, esta e
     # a unica forma de saber o que o drone via no momento.
+    #
+    # NESTA FASE, o que o drone "via" e o /scan: nao ha camera, e toda decisao
+    # de posicao sai dele. Um bag sem /scan responde onde o drone foi e nao
+    # responde por que -- que e a unica pergunta que se faz depois de bater.
+    #
+    # E a odometria e /fmu/out/vehicle_odometry, que e o que a classe Drone
+    # assina e o que o sim2d publica. O vehicle_local_position, que estava aqui,
+    # nao e publicado pelo simulador: o bag saia vazio nesse topico sem que nada
+    # avisasse.
     bag = ExecuteProcess(
         cmd=['ros2', 'bag', 'record', '-o', bag_dir,
              '/rosout',
+             '/scan',
              '/drone_trajectory',
              '/telemetry/drone_status',
-             '/fmu/out/vehicle_local_position',
+             '/fmu/out/vehicle_odometry',
              '/fmu/out/vehicle_status',
              '/fmu/in/trajectory_setpoint'],
         output='screen')

@@ -98,7 +98,10 @@ inline Contexto obterContexto(const BT::TreeNode& no) {
   Contexto c;
   fsm::Blackboard* bb = nullptr;
   if (auto arvore_bb = no.config().blackboard) {
-    arvore_bb->get<fsm::Blackboard*>(stdbt::kFsmBlackboardKey, bb);
+    // O retorno é `nodiscard`, e ignorá-lo dá aviso com -Wall. Aqui ele não
+    // acrescenta nada: a chave ausente deixa `bb` nulo, que é a mesma
+    // condição, testada logo abaixo. Fica explícito que foi decisão.
+    (void)arvore_bb->get<fsm::Blackboard*>(stdbt::kFsmBlackboardKey, bb);
   }
   if (bb == nullptr) return c;
 

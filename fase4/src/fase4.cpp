@@ -86,6 +86,7 @@ public:
             {"ciclos_estaveis",          5.0},
 
             // Ajuste de scan (ver maze_geometry/scan_fit.hpp)
+            {"lidar_offset_frente",      0.0},   // ver os YAML de config
             {"lidar_alcance_max",        8.0},
             {"scan_salto_max",           0.15},
             {"scan_tolerancia",          0.03},

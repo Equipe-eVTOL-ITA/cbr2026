@@ -50,6 +50,33 @@ case "${1:-}" in
         PX4_GZ_MODEL_POSE="8.0, 2.0, 1.5, 0.0, 0.0, 0.0"   # x,y,z,r,p,y
         PX4_SIM_MODEL=x500_cbr2026                      # modelo do drone
         ;;
+    fase4)
+        # O mundo NAO fica no repositorio: e GERADO do mesmo YAML que a missao
+        # e o sim2d leem, para a planta nao ganhar uma terceira copia.
+        #
+        #   ros2 run sim2d gerar_sdf fase4:cbr2026_fase4.yaml \
+        #       --nome fase4 -o ~/PX4-gazebo-models/worlds/fase4.sdf
+        PX4_GZ_WORLD=fase4
+
+        # A POSE ESTA EM ENU, e o mapa esta em NED. Os eixos TROCAM:
+        #
+        #     gazebo.x = mapa.y   (leste)
+        #     gazebo.y = mapa.x   (norte)
+        #
+        # A decolagem no mapa e (x=4.175, y=-0.600) virada para o LESTE, que e
+        # o alinhamento com a janela de entrada. Em ENU isso vira (-0.600,
+        # 4.175) com guinada ZERO, porque no ENU o angulo cresce do leste para
+        # o norte e o leste e o proprio eixo x.
+        #
+        # Estes tres numeros TEM de casar com inicio_x/inicio_y/inicio_yaw do
+        # config/simulation.yaml da fase: e de la que sai a transformacao
+        # inicial entre o mapa e a odometria. Se divergirem, o drone comeca a
+        # missao acreditando estar noutro lugar -- e nao ha erro nenhum.
+        PX4_GZ_MODEL_POSE="-0.600, 4.175, 0.15, 0.0, 0.0, 0.0"
+
+        # x500 com LIDAR 2D no topo: 1080 amostras, 270 graus, 30 m, 30 Hz.
+        PX4_SIM_MODEL=x500_lidar_2d
+        ;;
     default)
         PX4_GZ_WORLD=default
         PX4_GZ_MODEL_POSE="0.0, 0.0, 0.05, 0.0, 0.0, 0.0"
@@ -58,7 +85,7 @@ case "${1:-}" in
     *)
         echo "Mundo desconhecido: '${1:-}'" >&2
         echo "Uso: $0 <mundo>" >&2
-        echo "Disponíveis: default   (edite este script para adicionar os seus)" >&2
+        echo "Disponíveis: fase1, fase4, default" >&2
         exit 1
         ;;
 esac

@@ -64,13 +64,17 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_tree test/test_tree.cpp)
-  if(TARGET test_tree)
-    target_include_directories(test_tree PRIVATE include)
-    ament_target_dependencies(test_tree
-      rclcpp Eigen3 fsm drone_lib stdstates stdbt behaviortree_cpp
-      ament_index_cpp sensor_msgs maze_geometry)
-  endif()
+
+  # Um alvo por assunto. Nomes comecando com `test_`: o CI seleciona assim.
+  foreach(alvo test_tree test_transformacao)
+    ament_add_gtest(${alvo} test/${alvo}.cpp)
+    if(TARGET ${alvo})
+      target_include_directories(${alvo} PRIVATE include)
+      ament_target_dependencies(${alvo}
+        rclcpp Eigen3 fsm drone_lib stdstates stdbt behaviortree_cpp
+        ament_index_cpp sensor_msgs maze_geometry)
+    endif()
+  endforeach()
 endif()
 
 ament_package()

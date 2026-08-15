@@ -55,10 +55,24 @@ jobs:
         with:
           path: src/${{ github.event.repository.name }}
 
+      # Pela API, e não pelo raw.githubusercontent: aquele passa por CDN e serve
+      # cópia velha por alguns minutos. Quem acrescenta um pacote ao manifesto e
+      # re-roda este CI em seguida recebe o manifesto ANTIGO -- e o sintoma é o
+      # pacote novo faltando no `vcs import`, seguido de um erro de rosdep e de
+      # um erro de CMake noutro pacote. Aconteceu, e custou uma rodada.
+      #
+      # A lista impressa abaixo torna isso verificável num relance, em vez de
+      # dedutível a partir de três erros que não mencionam o manifesto.
       - name: Buscar o manifesto do workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -fsSL -o evtol.repos \
-            https://raw.githubusercontent.com/Equipe-eVTOL-ITA/evtol-dev/main/evtol.repos
+            -H "Accept: application/vnd.github.raw" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/Equipe-eVTOL-ITA/evtol-dev/contents/evtol.repos?ref=main"
+          echo "Pacotes no manifesto:"
+          python3 -c "import yaml;print(' ', ', '.join(sorted(yaml.safe_load(open('evtol.repos'))['repositories'])))"
 
       - name: Importar dependências nas versões pinadas
         run: |
@@ -193,10 +207,24 @@ jobs:
         with:
           path: src/${{ github.event.repository.name }}
 
+      # Pela API, e não pelo raw.githubusercontent: aquele passa por CDN e serve
+      # cópia velha por alguns minutos. Quem acrescenta um pacote ao manifesto e
+      # re-roda este CI em seguida recebe o manifesto ANTIGO -- e o sintoma é o
+      # pacote novo faltando no `vcs import`, seguido de um erro de rosdep e de
+      # um erro de CMake noutro pacote. Aconteceu, e custou uma rodada.
+      #
+      # A lista impressa abaixo torna isso verificável num relance, em vez de
+      # dedutível a partir de três erros que não mencionam o manifesto.
       - name: Buscar o manifesto do workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -fsSL -o evtol.repos \
-            https://raw.githubusercontent.com/Equipe-eVTOL-ITA/evtol-dev/main/evtol.repos
+            -H "Accept: application/vnd.github.raw" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/Equipe-eVTOL-ITA/evtol-dev/contents/evtol.repos?ref=main"
+          echo "Pacotes no manifesto:"
+          python3 -c "import yaml;print(' ', ', '.join(sorted(yaml.safe_load(open('evtol.repos'))['repositories'])))"
 
       - name: Importar dependências nas versões pinadas
         run: |

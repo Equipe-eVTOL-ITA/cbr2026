@@ -115,6 +115,13 @@ inline Contexto obterContexto(const BT::TreeNode& no) {
   return c;
 }
 
+/// Lê um float da blackboard, com padrão quando a chave não existe.
+inline float param(fsm::Blackboard* bb, const std::string& chave, float padrao) {
+  if (bb == nullptr) return padrao;
+  float* v = bb->get<float>(chave);
+  return v == nullptr ? padrao : *v;
+}
+
 inline double normalizar(double a) {
   while (a > M_PI) a -= 2.0 * M_PI;
   while (a <= -M_PI) a += 2.0 * M_PI;
@@ -200,25 +207,32 @@ inline maze_geometry::Ajuste atualizarVies(
                              ctx.scan->inc, yaw_chute, comodo, params);
   if (!a.valido) return a;
 
+  // O ajuste devolve onde o SENSOR está, e não onde o drone está.
+  //
+  // No x500_lidar_2d o LIDAR fica 12 cm à FRENTE do centro do drone -- medido
+  // no Gazebo, comparando o alcance para a frente com a planta: previsto
+  // 1,525 m do centro, lido 1,404 m. Doze centímetros num labirinto cujas
+  // folgas são de dez é erro sistemático maior que a margem, e ele apontaria
+  // sempre na direção da proa: o drone pararia consistentemente atrás do
+  // centro de cada cômodo, e mais perto da parede que ele acabou de atravessar.
+  //
+  // Nada no `sim2d` pega isso: lá o LIDAR está no centro por construção.
+  const double off = param(ctx.bb, "lidar_offset_frente", 0.0f);
+  const Eigen::Vector2d desloc(off * std::cos(a.guinada), off * std::sin(a.guinada));
+
   // A posição verdadeira segundo o LIDAR. Os eixos que o ajuste não conseguiu
   // resolver ficam com o que a transformação atual já dizia -- assim um
   // corredor que só mostra as laterais corrige a lateral e não estraga a
   // longitudinal.
   Eigen::Vector2d verdade = posicaoNoMapa(ctx);
-  if (a.desvio_x_valido) verdade.x() = comodo.centro().x() + a.desvio.x();
-  if (a.desvio_y_valido) verdade.y() = comodo.centro().y() + a.desvio.y();
+  const Eigen::Vector2d sensor = comodo.centro() + a.desvio;
+  if (a.desvio_x_valido) verdade.x() = sensor.x() - desloc.x();
+  if (a.desvio_y_valido) verdade.y() = sensor.y() - desloc.y();
 
   const Eigen::Vector3d p_odom = ctx.drone->getLocalPosition();
   fixarTransformacao(ctx, verdade, Eigen::Vector2d(p_odom.x(), p_odom.y()),
                      a.guinada, yaw_odom);
   return a;
-}
-
-/// Lê um float da blackboard, com padrão quando a chave não existe.
-inline float param(fsm::Blackboard* bb, const std::string& chave, float padrao) {
-  if (bb == nullptr) return padrao;
-  float* v = bb->get<float>(chave);
-  return v == nullptr ? padrao : *v;
 }
 
 /**

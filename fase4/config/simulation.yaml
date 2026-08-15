@@ -56,6 +56,22 @@ fase4_node:
     ciclos_estaveis: 5.0
 
     # ── Ajuste de scan (maze_geometry/scan_fit.hpp) ────────────────────────
+
+    # ONDE O LIDAR ESTA, em relacao ao centro do drone (metros, para a frente).
+    #
+    # O ajuste de scan devolve a posicao do SENSOR, e nao a do drone. No
+    # x500_lidar_2d o LIDAR fica 12 cm a frente -- MEDIDO no Gazebo, comparando
+    # o alcance para a frente com a planta: previsto 1.525 m do centro, lido
+    # 1.404 m.
+    #
+    # Doze centimetros num labirinto de folgas de dez e erro sistematico maior
+    # que a margem, e sempre na direcao da proa: o drone pararia atras do centro
+    # de cada comodo, mais perto da parede que acabou de atravessar.
+    #
+    # O sim2d NAO pega isso: la o LIDAR esta no centro por construcao. Por isso
+    # o valor e 0.0 na simulacao 2D e 0.121 no Gazebo e no voo.
+    lidar_offset_frente: 0.0
+
     lidar_alcance_max: 8.0
     scan_salto_max: 0.15     # maior que o ruido, menor que a menor quina
     scan_tolerancia: 0.03

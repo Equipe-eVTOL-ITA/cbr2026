@@ -82,9 +82,15 @@ ros2 run sim2d lote $(ros2 pkg prefix fase4)/share/fase4/lotes/fase4.yaml
 | deriva da odometria | malha aberta | esta fase |
 |---|---|---|
 | 0 | 3/3 | 3/3 |
-| 0,01 m/m | 2/3 | **3/3** |
+| 0,01 m/m | 1/3 | **3/3** |
 | 0,02 m/m | 0/3 | **3/3** |
 | 0,05 m/m | 0/3 | **3/3** |
+
+As duas colunas vêm do **mesmo** detector de colisão, e isso não é detalhe: a
+primeira medição usou um detector que lançava raios e não enxergava as quinas
+dos batentes. Ele era otimista em até 2 cm, e as folgas aqui são de dez. Refeitas
+com a distância ponto-segmento exata, a coluna do LIDAR não mudou e a da malha
+aberta **piorou** — o contraste é maior do que eu tinha reportado.
 
 A coluna da esquerda é o **piso**: a mesma rota voada em malha aberta, pela
 `missao_reta`, que não lê o LIDAR. Ela quebra entre 1 e 2 cm de deriva por metro

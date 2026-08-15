@@ -3,17 +3,36 @@
 # EIXOS: x para o NORTE (cima na planta), y para o LESTE (direita). E o plano
 # x-y do FRD, o mesmo do voo.
 #
-# ATENCAO: AS DIMENSOES SAO PRELIMINARES.
+# AS DIMENSOES DOS COMODOS SAO PRELIMINARES.
 #
 # O edital descreve areas ("0.9 m2", "3.7 m2") e nao as medidas dos lados. Os
 # valores abaixo assumem que os comodos quadrados tem 0,95 m de lado (raiz de
-# 0.9) e derivam o resto da topologia descrita. CONFIRA COM A PLANTA OFICIAL
-# antes de confiar em qualquer numero daqui -- e sobretudo antes de concluir
-# qualquer coisa sobre folga entre o drone e as paredes.
+# 0.9) e derivam o resto da topologia descrita. CONFIRA COM A PLANTA OFICIAL.
 #
-# A LARGURA DAS JANELAS tambem e suposta (0,60 m). O edital nao a informa, e ela
-# e o parametro que decide se a travessia e viavel: com um drone de 40 cm, uma
-# janela de 60 cm deixa 10 cm de cada lado.
+# A LARGURA DAS JANELAS (0,60 m) E ESCOLHIDA, E NAO SUPOSTA.
+#
+# Ela e o parametro que decide se a travessia e viavel, e foi fixada MEDINDO, em
+# bateria no sim2d, qual drone sobrevive a rota inteira:
+#
+#     envergadura   travessia
+#     0,40 m        2/2
+#     0,50 m        0/2   colide
+#     0,56 m        1/2
+#     0,60 m        0/2   colide
+#
+# Repare que 0,50 m CABE geometricamente numa janela de 0,60 (5 cm de cada
+# lado) e mesmo assim nao passa: a precisao da navegacao come essa folga. E por
+# isso que o numero vem de bateria, e nao de conta.
+#
+# Numa parede de 0,95 m, um vao de 0,60 deixa 17,5 cm de batente de cada lado --
+# o que ainda parece uma casa. Alargar o vao para caber um drone maior derrete
+# os batentes: com 0,87 m, 13 dos 29 segmentos de parede ficam abaixo do minimo
+# que o scan_fit aceita, e quase metade da geometria que a localizacao usa
+# desaparece.
+#
+# A ALTURA DAS PAREDES e 1,50 m, no mundo do Gazebo (o sim2d e 2D e nao a usa).
+# Escolhida contra a altura de voo: voando a 0,90 m, sobram 0,60 m antes de o
+# LIDAR passar por cima do labirinto e nao ver comodo nenhum.
 #
 # TOPOLOGIA, do edital (percurso em zigue-zague):
 #
@@ -32,6 +51,18 @@
 #                      +---------+
 #
 # (o desenho e esquematico; as coordenadas abaixo e que valem)
+
+# O DRONE QUE ESTA PLANTA ADMITE.
+#
+# O `maze_geometry` RECUSA este mapa se alguma janela da rota for estreita
+# demais para o drone declarado -- erro ao abrir o arquivo, e nao na arena.
+#
+# 0,40 m nao e chute: e o maior valor que atravessou a rota inteira em bateria.
+# Para comparar, o x500 tem 0,772 m (medido no model.sdf: braco de 0,246 m mais
+# meia-helice de 0,140 m) e nem geometricamente passa por 0,60 m.
+drone:
+  envergadura: 0.40
+  folga_minima: 0.10
 
 comodos:
   # 0 -- Comodo de entrada, topo esquerdo. Entra pelo oeste, sai pelo sul.

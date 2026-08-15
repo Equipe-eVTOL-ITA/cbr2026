@@ -26,6 +26,16 @@ timeout: 180
 repeticoes: 3
 
 fixos:
+  # O RAIO DO DRONE, explicito.
+  #
+  # Ele vinha do padrao do sim2d, e um padrao de biblioteca e o pior lugar para
+  # o parametro mais consequente de uma bateria: ele muda sem que este arquivo
+  # mude, e a tabela continua parecendo a mesma.
+  #
+  # 0.20 e o maximo que o mapa admite (envergadura 0.40 m). O drone real e
+  # menor, entao o numero medido aqui e conservador.
+  raio_drone: 0.20
+
   inicio_x: 4.175
   inicio_y: -0.600
   inicio_yaw: 1.5707963

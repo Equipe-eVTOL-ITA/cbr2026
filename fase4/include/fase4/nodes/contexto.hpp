@@ -141,10 +141,16 @@ inline double yawParaOdometria(const Contexto& ctx, double yaw_no_mapa) {
   return normalizar(yaw_no_mapa + *ctx.vies_yaw);
 }
 
+/// Um ponto da ODOMETRIA em coordenadas do mapa. Inverso de `paraOdometria`.
+inline Eigen::Vector2d paraMapa(const Contexto& ctx,
+                                const Eigen::Vector2d& na_odometria) {
+  return rodar(na_odometria - *ctx.vies, -*ctx.vies_yaw);
+}
+
 /// Onde o drone realmente está, em coordenadas do MAPA.
 inline Eigen::Vector2d posicaoNoMapa(const Contexto& ctx) {
   const Eigen::Vector3d p = ctx.drone->getLocalPosition();
-  return rodar(Eigen::Vector2d(p.x(), p.y()) - *ctx.vies, -*ctx.vies_yaw);
+  return paraMapa(ctx, Eigen::Vector2d(p.x(), p.y()));
 }
 
 /// A transformação que leva o mapa à odometria, dada uma correspondência.

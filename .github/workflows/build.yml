@@ -55,10 +55,24 @@ jobs:
         with:
           path: src/${{ github.event.repository.name }}
 
+      # Pela API, e não pelo raw.githubusercontent: aquele passa por CDN e serve
+      # cópia velha por alguns minutos. Quem acrescenta um pacote ao manifesto e
+      # re-roda este CI em seguida recebe o manifesto ANTIGO -- e o sintoma é o
+      # pacote novo faltando no `vcs import`, seguido de um erro de rosdep e de
+      # um erro de CMake noutro pacote. Aconteceu, e custou uma rodada.
+      #
+      # A lista impressa abaixo torna isso verificável num relance, em vez de
+      # dedutível a partir de três erros que não mencionam o manifesto.
       - name: Buscar o manifesto do workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -fsSL -o evtol.repos \
-            https://raw.githubusercontent.com/Equipe-eVTOL-ITA/evtol-dev/main/evtol.repos
+            -H "Accept: application/vnd.github.raw" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/Equipe-eVTOL-ITA/evtol-dev/contents/evtol.repos?ref=main"
+          echo "Pacotes no manifesto:"
+          python3 -c "import yaml;print(' ', ', '.join(sorted(yaml.safe_load(open('evtol.repos'))['repositories'])))"
 
       - name: Importar dependências nas versões pinadas
         run: |
@@ -72,12 +86,51 @@ jobs:
           PY
           vcs import --shallow src < deps.repos
 
+      # -----------------------------------------------------------------------
+      # O rosdep continua NÃO sendo bloqueante -- ele erra por conta própria com
+      # frequência, e travar o CI nisso custaria mais do que resolve.
+      #
+      # Mas ele para no primeiro problema. Uma única chave que não resolve faz
+      # com que NENHUMA dependência de apt seja instalada, e o `|| echo` mandava
+      # isso para o build sem dizer o que tinha faltado. O sintoma era um erro
+      # de CMake três passos adiante, em outro pacote:
+      #
+      #     Could NOT find ZeroMQ (missing: ZeroMQ_LIBRARIES ...)
+      #
+      # Nada ali aponta para a causa, que era um pacote do workspace ausente do
+      # manifesto. Aqui o log passa a nomear as chaves que faltaram, no lugar
+      # onde o problema realmente aconteceu.
+      # -----------------------------------------------------------------------
       - name: rosdep
+        # `shell: bash` porque o padrao dos passos é `sh -e`, e o `sh` do
+        # Ubuntu é o dash, que NÃO tem `set -o pipefail`. Sem esta linha o
+        # subshell abaixo morre na primeira instrução, o `if !` vira verdadeiro
+        # por motivo errado, e nada do diagnóstico aparece. Também descoberto
+        # pelo CI, depois de eu já ter "corrigido" este passo duas vezes.
+        shell: bash
         run: |
           rosdep update --rosdistro ${{ matrix.distro }}
-          rosdep install --from-paths src --ignore-src -y \
-            --rosdistro ${{ matrix.distro }} || \
-            echo "::warning::rosdep reportou erros; seguindo para o build"
+
+          # `set -o pipefail` num subshell, e nao `if ! cmd | tee`: num
+          # pipeline o status testado e o do ULTIMO comando, e o `tee` nunca
+          # falha. Sem isto a condicao nunca dispara e o passo volta a ser
+          # exatamente o que era -- escrevi assim na primeira tentativa e o CI
+          # provou.
+          if ! ( set -o pipefail
+                 rosdep install --from-paths src --ignore-src -y \
+                   --rosdistro ${{ matrix.distro }} 2>&1 | tee rosdep.log ); then
+            faltando=$(grep -oP "Cannot locate rosdep definition for \[\K[^]]+" \
+                       rosdep.log | sort -u | tr '\n' ' ')
+            if [ -n "$faltando" ]; then
+              echo "::error::rosdep parou: chave(s) sem definicao: $faltando."
+              echo "::error::O rosdep para na PRIMEIRA falha, entao NENHUMA"
+              echo "::error::dependencia de apt foi instalada. Se isto for um"
+              echo "::error::pacote do workspace, ele falta no evtol.repos do"
+              echo "::error::evtol-dev -- o CI busca o manifesto do main de la."
+            else
+              echo "::warning::rosdep reportou erros; seguindo para o build"
+            fi
+          fi
 
       - name: Compilar
         shell: bash
@@ -154,10 +207,24 @@ jobs:
         with:
           path: src/${{ github.event.repository.name }}
 
+      # Pela API, e não pelo raw.githubusercontent: aquele passa por CDN e serve
+      # cópia velha por alguns minutos. Quem acrescenta um pacote ao manifesto e
+      # re-roda este CI em seguida recebe o manifesto ANTIGO -- e o sintoma é o
+      # pacote novo faltando no `vcs import`, seguido de um erro de rosdep e de
+      # um erro de CMake noutro pacote. Aconteceu, e custou uma rodada.
+      #
+      # A lista impressa abaixo torna isso verificável num relance, em vez de
+      # dedutível a partir de três erros que não mencionam o manifesto.
       - name: Buscar o manifesto do workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -fsSL -o evtol.repos \
-            https://raw.githubusercontent.com/Equipe-eVTOL-ITA/evtol-dev/main/evtol.repos
+            -H "Accept: application/vnd.github.raw" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/Equipe-eVTOL-ITA/evtol-dev/contents/evtol.repos?ref=main"
+          echo "Pacotes no manifesto:"
+          python3 -c "import yaml;print(' ', ', '.join(sorted(yaml.safe_load(open('evtol.repos'))['repositories'])))"
 
       - name: Importar dependências nas versões pinadas
         run: |

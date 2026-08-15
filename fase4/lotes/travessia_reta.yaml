@@ -1,0 +1,41 @@
+# Bateria da travessia em MALHA ABERTA, com a missao de referencia.
+#
+# Isto nao mede navegacao -- a `missao_reta` nao le o LIDAR e nao corrige nada.
+# Mede duas coisas que precisam ser verdade ANTES de a navegacao valer a pena:
+#
+#   1. a rota e geometricamente possivel no mapa como esta escrito;
+#   2. a partir de qual deriva de odometria a malha aberta quebra.
+#
+# O (2) e o numero que justifica a fase inteira. Se a malha aberta aguentasse
+# 5 cm/m, nao haveria por que ler o LIDAR. Ela nao aguenta, e esta tabela e a
+# medida de quanto ela nao aguenta -- o piso contra o qual a navegacao real
+# sera comparada.
+
+missao:
+  - ros2
+  - run
+  - sim2d
+  - missao_reta
+  - --ros-args
+  - -p
+  - "tolerancia:=0.05"
+  # A rota, em pernas alinhadas a um eixo: cada perna e um "siga em frente"
+  # depois de uma guinada de 90 graus, que e ao que o edital limita o voo.
+  # Cada travessia de janela passa pelo centro exato da abertura.
+  - -p
+  - "pontos:=[4.175,0.475, 3.50,0.475, 2.25,0.475, 2.25,2.20, 2.25,2.375, 2.90,2.375, 3.175,2.375, 3.175,3.10, 2.225,3.10, 2.225,4.00, 2.225,4.275, 4.10,4.275]"
+
+mapa: fase4:cbr2026_fase4.yaml
+timeout: 90
+repeticoes: 3
+
+fixos:
+  inicio_x: 4.175
+  inicio_y: -0.60      # do lado de fora, diante da janela de entrada
+  raio_drone: 0.20
+  alvo_x: 4.10         # fora do labirinto, passada a janela de saida
+  alvo_y: 4.275
+  alvo_raio: 0.25
+
+varia:
+  deriva_por_metro: [0.0, 0.01, 0.02, 0.05]

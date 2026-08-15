@@ -2,21 +2,86 @@
 #
 # Estes valores sobrescrevem os padroes do codigo. Trocar de simulacao para
 # voo real deve ser trocar de arquivo aqui, nunca editar o .cpp.
+#
+# ATENCAO: NADA AQUI FOI VALIDADO EM VOO.
+#
+# Esta fase nunca voou. As diferencas para o simulation.yaml sao margens
+# escolhidas por analogia com as fases 1 e 3, que voaram -- e nao numeros
+# medidos. Ate haver um voo, leia cada valor como "o mais conservador que
+# pareceu razoavel", e nao como "o que funciona".
+#
+# O primeiro voo deveria ser em pedacos, e nao a rota inteira: decolar e pairar
+# dentro de UM comodo de 0,95 m. Se o drone nao consegue se manter estavel ali
+# -- efeito de solo e esteira dos rotores contra paredes a 27 cm nao sao
+# desprezveis --, nenhuma quantidade de algoritmo resolve, e a conversa passa a
+# ser sobre o tamanho do drone.
 fase4_node:
   ros__parameters:
     # Decolagem (NED: altura negativa e para cima)
-    takeoff_height: -2.5
-    max_vertical_velocity: 1.2
-    position_tolerance: 0.15
+    # A ALTURA DE VOO TEM DE FICAR ABAIXO DA PAREDE.
+    #
+    # O padrao do gerador era -2.5 m. As paredes do labirinto tem pouco mais de
+    # um metro: a 2,5 m o LIDAR passa POR CIMA delas e nao ve cômodo nenhum --
+    # e a fase inteira depende de ver o cômodo.
+    #
+    # O sim2d NAO pega este erro: ele e 2D e ignora a altitude, entao o scan
+    # sai igual a qualquer altura. Foi preciso olhar o mundo do Gazebo (paredes
+    # de 1,5 m por suposicao) para o problema aparecer. E uma limitacao do
+    # simulador que vale lembrar: ele responde sobre navegacao no plano, e nada
+    # sobre nada fora dele.
+    takeoff_height: -0.90
+    max_vertical_velocity: 0.7
+    position_tolerance: 0.25
 
     # Pouso
-    landing_velocity_max: 0.5
-    landing_velocity_min: 0.15
+    landing_velocity_max: 0.35
+    landing_velocity_min: 0.12
     max_base_height: 0.5
     landing_timeout: 5.0
 
     # Movimento horizontal
-    max_horizontal_velocity: 1.5
+    #
+    # 0.4 m/s, contra 1.5 na simulacao, e MENOS que os 0.6-0.7 das fases 1 e 3.
+    # Elas voam em area aberta; aqui o corredor tem 0.95 m e a janela 0.60 m.
+    # A 1.5 m/s um erro de 10 cm vira colisao antes de qualquer correcao chegar,
+    # porque o ciclo de decisao roda a 20 Hz -- 7,5 cm por tick.
+    max_horizontal_velocity: 0.4
+
+    # ── O labirinto ────────────────────────────────────────────────────────
+    #
+    # A planta e a rota vem deste arquivo, o MESMO que o sim2d le.
+    mapa: "cbr2026_fase4.yaml"
+
+    # Onde o drone decola, EM COORDENADAS DO MAPA. Daqui sai o vies inicial da
+    # odometria: o Takeoff reancora o referencial, entao a odometria le zero
+    # aqui. Comecar com vies zero mandaria o drone para o canto da arena.
+    inicio_x: 4.175         # alinhado com a janela de entrada
+    inicio_y: -0.600        # do lado de fora
+    inicio_yaw: 1.5707963   # apontado para o leste, para dentro
+
+    # ── Geometria das manobras ─────────────────────────────────────────────
+    #
+    # ATENCAO ao recuo: com comodos de 0.95 m, um drone de 0.40 m parado a
+    # 0.35 m de uma parede esta a 0.40 m da oposta. Aumentar isto poe o ponto
+    # de aproximacao FORA do comodo -- o test_tree tem um teste so para isso.
+    recuo_da_janela: 0.35
+    avanco_apos_janela: 0.35
+    # NAO e a position_tolerance (que vale para decolagem e pouso): 15 cm de
+    # folga num comodo de 95 cm deixa o drone parar dentro do vao da janela.
+    tolerancia_movimento: 0.06
+    tolerancia_centro: 0.06   # mais apertado que na simulacao, e mais lento
+    yaw_tolerance: 0.03
+    ciclos_estaveis: 10.0     # o dobro: ruido de LIDAR real nao e gaussiano
+
+    # ── Ajuste de scan (maze_geometry/scan_fit.hpp) ────────────────────────
+    # Estes quatro sao os que MAIS provavelmente vao precisar de ajuste no
+    # primeiro voo: o ruido de um LIDAR real nao e o gaussiano do simulador, e
+    # `scan_salto_max` e `scan_tolerancia` sao exatamente os limiares que
+    # separam "parede" de "ruido".
+    lidar_alcance_max: 8.0
+    scan_salto_max: 0.20     # mais folgado: ruido real quebra paredes em pedacos
+    scan_tolerancia: 0.05
+    scan_parede_min: 0.25    # exige parede mais longa para confiar nela
 
 # O system_health do drone_lib tambem le deste arquivo.
 system_health:

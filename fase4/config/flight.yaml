@@ -18,6 +18,38 @@ fase4_node:
     # Movimento horizontal
     max_horizontal_velocity: 1.5
 
+    # ── O labirinto ────────────────────────────────────────────────────────
+    #
+    # A planta e a rota vem deste arquivo, o MESMO que o sim2d le.
+    mapa: "cbr2026_fase4.yaml"
+
+    # Onde o drone decola, EM COORDENADAS DO MAPA. Daqui sai o vies inicial da
+    # odometria: o Takeoff reancora o referencial, entao a odometria le zero
+    # aqui. Comecar com vies zero mandaria o drone para o canto da arena.
+    inicio_x: 4.175         # alinhado com a janela de entrada
+    inicio_y: -0.600        # do lado de fora
+    inicio_yaw: 1.5707963   # apontado para o leste, para dentro
+
+    # ── Geometria das manobras ─────────────────────────────────────────────
+    #
+    # ATENCAO ao recuo: com comodos de 0.95 m, um drone de 0.40 m parado a
+    # 0.35 m de uma parede esta a 0.40 m da oposta. Aumentar isto poe o ponto
+    # de aproximacao FORA do comodo -- o test_tree tem um teste so para isso.
+    recuo_da_janela: 0.35
+    avanco_apos_janela: 0.35
+    # NAO e a position_tolerance (que vale para decolagem e pouso): 15 cm de
+    # folga num comodo de 95 cm deixa o drone parar dentro do vao da janela.
+    tolerancia_movimento: 0.06
+    tolerancia_centro: 0.08
+    yaw_tolerance: 0.05
+    ciclos_estaveis: 5.0
+
+    # ── Ajuste de scan (maze_geometry/scan_fit.hpp) ────────────────────────
+    lidar_alcance_max: 8.0
+    scan_salto_max: 0.15     # maior que o ruido, menor que a menor quina
+    scan_tolerancia: 0.03
+    scan_parede_min: 0.20
+
 # O system_health do drone_lib tambem le deste arquivo.
 system_health:
   ros__parameters:

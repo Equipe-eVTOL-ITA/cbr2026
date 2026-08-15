@@ -18,9 +18,10 @@
 
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
 
-// Nos desta missao. Crie em include/fase4/nodes/ e inclua aqui.
-// #include "fase4/nodes/meu_no.hpp"
+#include "fase4/nodes/navegacao.hpp"
+#include "fase4/nodes/seguranca.hpp"
 
 /**
  * @brief Missao fase4, modelada como Behavior Tree.
@@ -58,6 +59,38 @@ public:
             // Movimento horizontal
             {"max_horizontal_velocity",  1.5},
 
+            // ── O labirinto ──────────────────────────────────────────────
+            //
+            // A planta e a rota vem de um YAML, o MESMO que o sim2d le. Se a
+            // missao tivesse a propria copia das dimensoes, ela poderia
+            // percorrer uma casa e o simulador desenhar outra.
+            {"mapa",                     std::string("cbr2026_fase4.yaml")},
+
+            // Onde o drone decola, EM COORDENADAS DO MAPA. E daqui que sai o
+            // vies inicial da odometria: o Takeoff reancora o referencial na
+            // decolagem, entao a odometria passa a ler zero neste ponto.
+            {"inicio_x",                 4.175},
+            {"inicio_y",                -0.600},
+            {"inicio_yaw",               1.5707963},   // apontado para o leste
+
+            // Geometria das manobras
+            {"recuo_da_janela",          0.35},   // onde parar antes do vao
+            {"avanco_apos_janela",       0.35},   // onde parar depois dele
+            // Tolerancia dos deslocamentos. NAO e a `position_tolerance`, que
+            // vale para decolagem e pouso: 15 cm de folga num comodo de 95 cm
+            // deixa o drone parar a 15 cm do alvo, e foi assim que a primeira
+            // travessia terminou dentro do vao em vez de dentro do comodo.
+            {"tolerancia_movimento",     0.06},
+            {"tolerancia_centro",        0.08},
+            {"yaw_tolerance",            0.05},
+            {"ciclos_estaveis",          5.0},
+
+            // Ajuste de scan (ver maze_geometry/scan_fit.hpp)
+            {"lidar_alcance_max",        8.0},
+            {"scan_salto_max",           0.15},
+            {"scan_tolerancia",          0.03},
+            {"scan_parede_min",          0.20},
+
             // Qual arvore carregar, relativa a share/fase4/trees/. Os dois
             // perfis podem apontar para arvores diferentes -- e uma das razoes
             // de a arvore ser um arquivo e nao codigo.
@@ -94,11 +127,56 @@ public:
         }
         blackboard_.set<std::shared_ptr<Drone>>("drone", drone_);
 
+        // ======================= O LABIRINTO =======================
+        //
+        // Carregado ANTES da arvore, de proposito. Uma rota incoerente -- saida
+        // por parede sem janela, passo que nao leva ao comodo seguinte -- vira
+        // excecao aqui, com o no ainda no chao. O `carregar` valida tudo isso.
+        const auto mapa_arquivo = std::get<std::string>(params.at("mapa"));
+        const auto mapa_caminho =
+            ament_index_cpp::get_package_share_directory("fase4") + "/maps/" + mapa_arquivo;
+        casa_ = maze_geometry::carregar(mapa_caminho);
+        RCLCPP_INFO(this->get_logger(), "labirinto: %zu comodos, rota de %zu passos (%s)",
+                    casa_.comodos.size(), casa_.rota.size(), mapa_caminho.c_str());
+
+        // A TRANSFORMACAO INICIAL do mapa para a odometria.
+        //
+        // O TakeoffState reancora o referencial na decolagem: a odometria passa
+        // a ler (0,0) onde o drone esta -- que no mapa e `inicio` -- E os eixos
+        // dela passam a seguir a PROA de decolagem, nao o norte do mapa.
+        //
+        // Verificado no drone_lib: `getLocalPosition` devolve
+        // R(-initial_yaw) * (ned - home) e `getOrientation` devolve
+        // yaw - initial_yaw. Sao as duas metades da mesma transformacao rigida,
+        // e tratar so a translacao manda a correcao de centralizacao para o
+        // eixo errado -- o drone diverge no primeiro comodo, medido.
+        {
+            const double inicio_yaw = std::get<double>(params.at("inicio_yaw"));
+            const Eigen::Vector2d inicio(std::get<double>(params.at("inicio_x")),
+                                         std::get<double>(params.at("inicio_y")));
+            vies_yaw_ = -inicio_yaw;
+            const double c = std::cos(vies_yaw_), sn = std::sin(vies_yaw_);
+            vies_ = -Eigen::Vector2d(inicio.x() * c - inicio.y() * sn,
+                                     inicio.x() * sn + inicio.y() * c);
+        }
+
+        blackboard_.set<maze_geometry::Casa>("casa", &casa_);
+        blackboard_.set<fase4::ScanRecebido>("scan", &scan_);
+        blackboard_.set<int>("passo_da_rota", 0);
+        blackboard_.set<Eigen::Vector2d>("vies_odometria", &vies_);
+        blackboard_.set<double>("vies_yaw", &vies_yaw_);
+
         // ======================= ARVORE =======================
         BT::BehaviorTreeFactory factory;
         stdbt::registerAll(factory);
-        // ACRESCENTE aqui os nos desta missao, ex.:
-        // factory.registerNodeType<MeuNo>("MeuNo");
+
+        factory.registerNodeType<fase4::EntrarNaCasa>("EntrarNaCasa");
+        factory.registerNodeType<fase4::CentralizarNoComodo>("CentralizarNoComodo");
+        factory.registerNodeType<fase4::AlinharComAJanela>("AlinharComAJanela");
+        factory.registerNodeType<fase4::AtravessarJanela>("AtravessarJanela");
+        factory.registerNodeType<fase4::AindaHaPassos>("AindaHaPassos");
+        factory.registerNodeType<fase4::RotaCompleta>("RotaCompleta");
+        factory.registerNodeType<fase4::ParedePerigosamentePerto>("ParedePerigosamentePerto");
 
         auto bt_blackboard = BT::Blackboard::create();
         bt_blackboard->set(stdbt::kFsmBlackboardKey, &blackboard_);
@@ -133,11 +211,37 @@ public:
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/drone_trajectory", 10);
         trajectory_.header.frame_id = "map";
 
+        // O callback escreve na blackboard e os nos apenas leem -- o mesmo
+        // padrao das fases de visao. Assim nenhum no da arvore conhece ROS.
+        //
+        // Sem grupo de callback explicito, este callback e o timer caem no
+        // grupo padrao do no, que e MUTUAMENTE EXCLUSIVO. Os dois nunca rodam
+        // ao mesmo tempo, e por isso o `scan_` nao precisa de mutex mesmo com
+        // executor multi-thread. Mover qualquer um dos dois para outro grupo
+        // reintroduz a corrida.
+        //
+        // QoS best_effort: e o do driver de LIDAR e o do sim2d. Um QoS
+        // incompativel faria o topico existir sem nunca casar, e o sintoma
+        // seria a missao esperando scan para sempre, sem erro nenhum.
+        scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+            "/scan", rclcpp::SensorDataQoS(),
+            [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+                scan_.alcances = msg->ranges;
+                scan_.ang_min = msg->angle_min;
+                scan_.inc = msg->angle_increment;
+                scan_.recebido = true;
+                ultimo_scan_ = this->now();
+            });
+
         RCLCPP_INFO(this->get_logger(), "missao fase4 iniciada (Behavior Tree)");
     }
 
 private:
     void tick() {
+        scan_.idade = scan_.recebido
+                          ? (this->now() - ultimo_scan_).seconds()
+                          : 1e9;
+
         auto pos    = drone_->getLocalPosition();
         auto orient = drone_->getOrientation();
 
@@ -202,6 +306,12 @@ private:
 
     std::shared_ptr<Drone> drone_;
     fsm::Blackboard blackboard_;
+    maze_geometry::Casa casa_;
+    fase4::ScanRecebido scan_;
+    Eigen::Vector2d vies_{0.0, 0.0};
+    double vies_yaw_{0.0};
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    rclcpp::Time ultimo_scan_;
     std::unique_ptr<BT::Tree> tree_;
     std::unique_ptr<BT::Groot2Publisher> groot_;
     rclcpp::TimerBase::SharedPtr timer_;

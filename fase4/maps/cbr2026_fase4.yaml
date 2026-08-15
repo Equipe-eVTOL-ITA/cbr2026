@@ -1,0 +1,135 @@
+# Labirinto da fase 4 da CBR 2026.
+#
+# EIXOS: x para o NORTE (cima na planta), y para o LESTE (direita). E o plano
+# x-y do FRD, o mesmo do voo.
+#
+# ATENCAO: AS DIMENSOES SAO PRELIMINARES.
+#
+# O edital descreve areas ("0.9 m2", "3.7 m2") e nao as medidas dos lados. Os
+# valores abaixo assumem que os comodos quadrados tem 0,95 m de lado (raiz de
+# 0.9) e derivam o resto da topologia descrita. CONFIRA COM A PLANTA OFICIAL
+# antes de confiar em qualquer numero daqui -- e sobretudo antes de concluir
+# qualquer coisa sobre folga entre o drone e as paredes.
+#
+# A LARGURA DAS JANELAS tambem e suposta (0,60 m). O edital nao a informa, e ela
+# e o parametro que decide se a travessia e viavel: com um drone de 40 cm, uma
+# janela de 60 cm deixa 10 cm de cada lado.
+#
+# TOPOLOGIA, do edital (percurso em zigue-zague):
+#
+#        oeste ->                                          -> saida (norte)
+#   +---------+                                    +-------+
+#   | entrada |                                    |       |
+#   |  (0)    |                                    | corr2 |
+#   +----|----+--------+---------+---------+       |  (6)  |
+#        |    |        |         |         |       |       |
+#   +----v----+--------+  estr2  |  corr1  +-------+       |
+#   |                  |   (4)   |   (5)   |               |
+#   |      salao       +----^----+         +---------------+
+#   |       (2)        |         |         |
+#   +------------------+  estr1  |
+#                      |   (3)   |
+#                      +---------+
+#
+# (o desenho e esquematico; as coordenadas abaixo e que valem)
+
+comodos:
+  # 0 -- Comodo de entrada, topo esquerdo. Entra pelo oeste, sai pelo sul.
+  - id: 0
+    nome: entrada
+    x: 3.70          # canto sudoeste
+    y: 0.00
+    largura: 0.95    # extensao leste-oeste (y)
+    altura: 0.95     # extensao norte-sul (x)
+    janelas:
+      oeste: {offset: 0.475, largura: 0.60}   # entrada do labirinto (seta vermelha)
+      sul:   {offset: 0.475, largura: 0.60}
+
+  # 2 -- Salao principal, 3.7 m2. Entra pelo norte no canto oeste,
+  #      sai pelo leste na metade inferior.
+  - id: 2
+    nome: salao
+    x: 1.75
+    y: 0.00
+    largura: 1.90
+    altura: 1.95
+    janelas:
+      norte: {offset: 0.475, largura: 0.60}   # alinhada com a saida da entrada
+      leste: {offset: 0.500, largura: 0.60}   # metade INFERIOR: offset < altura/2
+
+  # 3 -- Primeiro estrangulamento, inferior central.
+  #      Entra pelo oeste, sai pelo norte.
+  - id: 3
+    nome: estrangulamento_1
+    x: 1.75
+    y: 1.90
+    largura: 0.95
+    altura: 0.95
+    janelas:
+      oeste: {offset: 0.500, largura: 0.60}
+      norte: {offset: 0.475, largura: 0.60}
+
+  # 4 -- Segundo estrangulamento, logo acima do primeiro.
+  #      Entra pelo sul, sai pelo leste.
+  - id: 4
+    nome: estrangulamento_2
+    x: 2.70
+    y: 1.90
+    largura: 0.95
+    altura: 0.95
+    janelas:
+      sul:   {offset: 0.475, largura: 0.60}
+      leste: {offset: 0.475, largura: 0.60}
+
+  # 5 -- Primeiro corredor vertical, 1.8 m2.
+  #      Entra pelo oeste na porcao SUPERIOR, sai pelo leste na porcao INFERIOR.
+  - id: 5
+    nome: corredor_1
+    x: 1.75
+    y: 2.85
+    largura: 0.95
+    altura: 1.90
+    janelas:
+      oeste: {offset: 1.425, largura: 0.60}   # superior
+      leste: {offset: 0.475, largura: 0.60}   # inferior
+
+  # 6 -- Segundo corredor vertical, identico.
+  #      Entra pelo oeste na porcao INFERIOR, sai pelo NORTE (seta azul).
+  - id: 6
+    nome: corredor_2
+    x: 1.75
+    y: 3.80
+    largura: 0.95
+    altura: 1.90
+    janelas:
+      oeste: {offset: 0.475, largura: 0.60}   # inferior
+      norte: {offset: 0.475, largura: 0.60}   # SAIDA do labirinto (seta azul)
+
+# Onde os QR Codes estao colados. Ainda nao usado pela missao -- a travessia vem
+# primeiro --, mas o formato ja existe para que o simulador nao precise mudar
+# quando a busca entrar.
+#
+# `parede` e uma das quatro; `offset` e a posicao ao longo dela, em metros.
+qrcodes:
+  A: {comodo: 2, parede: sul,   offset: 0.90}
+  B: {comodo: 3, parede: leste, offset: 0.50}
+  C: {comodo: 4, parede: norte, offset: 0.40}
+  D: {comodo: 5, parede: leste, offset: 1.40}
+  E: {comodo: 6, parede: leste, offset: 1.00}
+
+# A ROTA, do edital: a sequencia de comodos e por qual parede se sai de cada um.
+#
+# Mora aqui, e nao no codigo da missao, pelo mesmo motivo das paredes: se a
+# missao tivesse a propria copia, ela poderia percorrer uma casa e o simulador
+# desenhar outra.
+#
+# O `casa.hpp` valida esta lista na carga -- cada saida precisa ter janela, e
+# precisa dar no comodo do passo seguinte. Uma rota errada vira erro ao abrir o
+# arquivo, e nao um drone indo com confianca contra uma parede.
+rota:
+  - {comodo: 0, saida: sul}      # entrada  -> salao
+  - {comodo: 2, saida: leste}    # salao    -> estrangulamento_1
+  - {comodo: 3, saida: norte}    # estr_1   -> estrangulamento_2
+  - {comodo: 4, saida: leste}    # estr_2   -> corredor_1
+  - {comodo: 5, saida: leste}    # corr_1   -> corredor_2
+  - {comodo: 6, saida: norte}    # corr_2   -> FORA (seta azul)

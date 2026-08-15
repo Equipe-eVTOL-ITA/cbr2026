@@ -1,39 +1,107 @@
 <?xml version="1.0"?>
-<!--
-  Arvore da missao fase4.
-
-  Este arquivo e INSTALADO no share/fase4/trees/ e carregado em tempo de
-  execucao. Editar aqui e relancar muda a missao SEM RECOMPILAR -- e e o que
-  permite abrir a arvore no Groot2 e edita-la visualmente.
-
-  Qual arvore carregar e parametro (tree_file), entao simulacao e voo podem
-  usar arvores diferentes.
-
-  ATENCAO: nome de no errado aqui NAO e erro de compilacao. Ele aparece so ao
-  carregar. O test/test_tree.cpp existe exatamente para pegar isso no CI.
-
-  Nos disponiveis sem escrever codigo (do stdbt):
-
-    <Arming/>              arma
-    <Takeoff/>             decola E reancora o referencial do mundo
-    <TakeoffAgain/>        decola SEM reancorar (use na redecolagem)
-    <GoTo/>                vai ate target_x/y/z/yaw da blackboard
-    <PrecisionLanding/>    descida exponencial
-    <ReturnHome/>          volta para casa em duas fases
-    <LandAndDisarm/>       pousa e desarma
-
-    <BlackboardBool chave="..."/>
-    <BlackboardMenorQue chave="..." limite="..."/>
-
-  E os compositores da propria BT: Sequence, Fallback, Parallel, Retry,
-  Timeout, Inverter. Veja https://www.behaviortree.dev
--->
 <root BTCPP_format="4">
   <BehaviorTree ID="Principal">
-    <Sequence>
-      <Arming/>
-      <Takeoff/>
-      <PrecisionLanding/>
-    </Sequence>
+    <ReactiveSequence>
+
+      <!--
+        Reavaliado A CADA TICK, e e por isso que ele fica aqui em cima: se uma
+        parede chegar perto demais, o que estiver em curso aborta na hora.
+        Numa FSM isto seria uma checagem repetida em todo estado, e bastaria
+        esquece-la em um deles.
+
+        O limite e 12 cm, e nao 30: neste labirinto a parede esta SEMPRE perto.
+        Um drone de 0.40 m perfeitamente centrado num comodo de 0.95 m tem 27 cm
+        de folga, e atravessando um vao de 0.60 m tem 10 cm. Uma guarda
+        "razoavel" dispararia o tempo todo e seria desligada na primeira semana.
+        Esta e o ULTIMO recurso -- quem mantem o drone longe das paredes sao a
+        centralizacao e o alinhamento.
+      -->
+      <Inverter>
+        <ParedePerigosamentePerto limite="0.12" setor_livre="0.5"/>
+      </Inverter>
+
+      <Sequence>
+        <Arming/>
+        <Takeoff/>
+
+        <EntrarNaCasa/>
+
+        <!--
+          O laco da rota. Repete o ciclo de um comodo ate `AindaHaPassos`
+          falhar, o que acontece quando a rota acaba -- sem ninguem escrever
+          "6" aqui. O numero de comodos mora no mapa, e so nele.
+
+          O `Inverter` NAO e decorativo. O `KeepRunningUntilFailure` devolve
+          FAILURE quando o filho falha (e RUNNING enquanto ele tem sucesso),
+          entao o fim NORMAL da rota chega aqui como falha e derrubaria a
+          Sequence inteira. Medido: a travessia dos seis comodos dava certo e a
+          arvore reprovava no tick seguinte ao ultimo passo.
+
+          Note que nenhum teste de carga pega isso -- os nomes dos nos estao
+          todos certos. Foi o simulador que pegou.
+
+          O `Timeout` de cada acao e a politica de desistencia. Ela esta AQUI,
+          no XML, e nao dentro dos nos, para poder mudar sem recompilar.
+        -->
+        <Inverter>
+          <KeepRunningUntilFailure>
+            <Sequence>
+              <AindaHaPassos/>
+              <Timeout msec="30000"> <CentralizarNoComodo/> </Timeout>
+              <Timeout msec="30000"> <AlinharComAJanela/>   </Timeout>
+              <Timeout msec="20000"> <AtravessarJanela/>    </Timeout>
+            </Sequence>
+          </KeepRunningUntilFailure>
+        </Inverter>
+
+        <!--
+          Sem isto, uma missao abortada na terceira janela seguiria para o pouso
+          como se tivesse dado tudo certo: o KeepRunningUntilFailure devolve
+          SUCCESS tanto quando a rota acaba quanto quando algo falha no meio.
+        -->
+        <RotaCompleta/>
+
+        <!--
+          Pouso simples, e nao PrecisionLanding.
+
+          O PrecisionLanding do stdstates desce sobre um alvo VISTO -- ele le da
+          blackboard a posicao que um no de visao escreveu. Nesta fase nao ha
+          camera, e sem alvo ele falha no primeiro tick. Foi o que aconteceu no
+          primeiro teste completo: a travessia inteira deu certo e a arvore
+          reprovou no ultimo no.
+
+          PENDENTE: o edital manda pousar na plataforma central. Falta a posicao
+          dela no mapa e um trecho ate la. Enquanto isso, a fase pousa onde sai,
+          que e o que "atravessar a casa" exige.
+        -->
+        <LandAndDisarm/>
+      </Sequence>
+
+    </ReactiveSequence>
   </BehaviorTree>
 </root>
+<!--
+  Arvore da fase 4 -- travessia do labirinto escuro.
+
+  O CICLO DE UM COMODO tem tres partes, e a divisao nao e arbitraria:
+
+    CentralizarNoComodo   le o LIDAR, corrige o VIES da odometria, vai ao
+                          centro. E a unica parte em que a localizacao e
+                          refeita -- e portanto a unica que faz o LIDAR valer
+                          alguma coisa.
+    AlinharComAJanela     desliza ate o alinhamento lateral do vao e vira de
+                          frente para ele. Ainda da para errar aqui.
+    AtravessarJanela      avanca em MALHA ABERTA. Aqui ja nao da.
+
+  A ultima linha e a razao da divisao. Dentro do vao o LIDAR ve duas paredes
+  muito proximas e nenhuma geometria de comodo: corrigir ali usa uma formula
+  que supoe um comodo e recebe outra coisa, devolvendo um numero plausivel e
+  errado exatamente quando um numero errado custa mais caro.
+
+  A PLANTA E A ROTA vem de maps/cbr2026_fase4.yaml, o MESMO arquivo que o sim2d
+  le. A rota e validada na carga: cada saida precisa ter janela e precisa dar no
+  comodo seguinte. Rota errada vira excecao com o drone no chao.
+
+  ATENCAO: nome de no errado aqui NAO e erro de compilacao. Aparece so ao
+  carregar. O test/test_tree.cpp existe para pegar isso no CI.
+-->

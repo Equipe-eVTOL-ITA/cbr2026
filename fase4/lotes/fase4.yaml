@@ -1,0 +1,39 @@
+# A bateria da fase 4: a missao DE VERDADE, com a odometria derivando.
+#
+# O NUMERO QUE ELA EXISTE PARA PRODUZIR
+#
+# `lotes/travessia_reta.yaml` mede o PISO: a mesma rota em malha aberta, sem
+# ler o LIDAR. Medido: 3/3 sem deriva, 2/3 com 0.01 m/m, 0/3 com 0.02 e 0/3 com
+# 0.05, com as colisoes concentradas na quarta travessia.
+#
+# Esta bateria roda a navegacao completa nas MESMAS condicoes. Se a coluna de
+# 0.02 m/m nao subir para perto de 100%, a correcao por LIDAR nao esta pagando
+# o proprio custo -- e essa e a unica pergunta que decide se a fase esta pronta.
+
+missao:
+  - ros2
+  - run
+  - fase4
+  - fase4
+  - --ros-args
+  - --params-file
+  - install/fase4/share/fase4/config/simulation.yaml
+  - -p
+  - "groot2_port:=0.0"
+
+mapa: fase4:cbr2026_fase4.yaml
+timeout: 180
+repeticoes: 3
+
+fixos:
+  inicio_x: 4.175
+  inicio_y: -0.600
+  inicio_yaw: 1.5707963
+  raio_drone: 0.20
+  # Fora do labirinto, passada a janela de saida (seta azul).
+  alvo_x: 3.95
+  alvo_y: 4.275
+  alvo_raio: 0.35
+
+varia:
+  deriva_por_metro: [0.0, 0.01, 0.02, 0.05]

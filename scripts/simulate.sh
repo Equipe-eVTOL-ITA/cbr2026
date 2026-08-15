@@ -51,12 +51,21 @@ case "${1:-}" in
         PX4_SIM_MODEL=x500_cbr2026                      # modelo do drone
         ;;
     fase4)
-        # O mundo NAO fica no repositorio: e GERADO do mesmo YAML que a missao
-        # e o sim2d leem, para a planta nao ganhar uma terceira copia.
-        #
-        #   ros2 run sim2d gerar_sdf fase4:cbr2026_fase4.yaml \
-        #       --nome fase4 -o ~/PX4-gazebo-models/worlds/fase4.sdf
         PX4_GZ_WORLD=fase4
+
+        # AS PAREDES DO LABIRINTO SAO REGERADAS AQUI, a cada simulacao.
+        #
+        # Elas saem do MESMO YAML que a missao le. Se o mapa mudasse e o .sdf
+        # nao, o drone voaria num labirinto diferente do que a missao acredita
+        # -- e nada acusaria: cada arquivo estaria certo sozinho.
+        #
+        # Regerar custa um piscar de olhos e elimina a classe inteira de
+        # problema. Fica aqui, e nao numa task separada, porque o caminho para
+        # rodar uma simulacao tem de ser o mesmo para todas as fases.
+        echo "Regerando as paredes do labirinto a partir do mapa da fase 4..."
+        ros2 run sim2d gerar_sdf fase4:cbr2026_fase4.yaml \
+            --modelo --nome labirinto_fase4 \
+            -o "$HOME/PX4-gazebo-models/models/labirinto_fase4/model.sdf"
 
         # A POSE ESTA EM ENU, e o mapa esta em NED. Os eixos TROCAM:
         #

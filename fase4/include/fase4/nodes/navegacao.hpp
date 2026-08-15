@@ -314,6 +314,85 @@ class AtravessarJanela : public NoDaFase {
   }
 };
 
+/**
+ * @brief Vai até a plataforma de pouso, em dois trechos axiais.
+ *
+ * SEM PLATAFORMA DECLARADA, ele diz isso no log e devolve SUCCESS.
+ *
+ * Não é descuido: a posição da plataforma não é um número que se possa supor --
+ * errá-la é pousar fora dela. Enquanto a coordenada não vier do edital, a
+ * missão sai do labirinto e pousa onde está, que é o que "atravessar a casa"
+ * exige, e o log deixa claro que a última etapa não foi feita.
+ *
+ * O silêncio é que seria descuido. Um nó que sucede sem fazer nada e sem dizer
+ * nada vira uma etapa que todo mundo acha que existe.
+ */
+class IrParaPlataforma : public NoDaFase {
+ public:
+  using NoDaFase::NoDaFase;
+  static BT::PortsList providedPorts() { return {}; }
+
+  BT::NodeStatus onStart() override {
+    if (!resolverContexto()) return BT::NodeStatus::FAILURE;
+
+    if (!ctx_.casa->tem_plataforma) {
+      ctx_.drone->log("");
+      ctx_.drone->log("SEM PLATAFORMA declarada no mapa: pousando onde estou. "
+                      "Acrescente 'plataforma: {x: ..., y: ...}' ao YAML.");
+      return BT::NodeStatus::SUCCESS;
+    }
+
+    const Eigen::Vector2d alvo = ctx_.casa->plataforma;
+    const Eigen::Vector2d aqui = posicaoNoMapa(ctx_);
+    z_ = alturaDeVoo();
+
+    // Dois trechos axiais, como o resto da fase: primeiro o eixo de maior
+    // deslocamento, depois o outro. Nunca uma diagonal.
+    const double dx = alvo.x() - aqui.x();
+    const double dy = alvo.y() - aqui.y();
+    if (std::abs(dx) >= std::abs(dy)) {
+      meio_ = Eigen::Vector2d(alvo.x(), aqui.y());
+      yaw_meio_ = maze_geometry::rumo(dx > 0 ? maze_geometry::Parede::Norte
+                                             : maze_geometry::Parede::Sul);
+      yaw_fim_ = maze_geometry::rumo(dy > 0 ? maze_geometry::Parede::Leste
+                                            : maze_geometry::Parede::Oeste);
+    } else {
+      meio_ = Eigen::Vector2d(aqui.x(), alvo.y());
+      yaw_meio_ = maze_geometry::rumo(dy > 0 ? maze_geometry::Parede::Leste
+                                             : maze_geometry::Parede::Oeste);
+      yaw_fim_ = maze_geometry::rumo(dx > 0 ? maze_geometry::Parede::Norte
+                                            : maze_geometry::Parede::Sul);
+    }
+    fim_ = alvo;
+
+    ctx_.drone->log("");
+    ctx_.drone->log("INDO para a plataforma em (" + std::to_string(alvo.x()) +
+                    ", " + std::to_string(alvo.y()) + ")");
+    etapa_ = 0;
+    mov_.iniciar(paraOdometria(ctx_, meio_), yawParaOdometria(ctx_, yaw_meio_), z_);
+    return BT::NodeStatus::RUNNING;
+  }
+
+  BT::NodeStatus onRunning() override {
+    const double tol = param(ctx_.bb, "tolerancia_movimento", 0.06f);
+    const double tol_yaw = param(ctx_.bb, "yaw_tolerance", 0.05f);
+    if (!mov_.passo(ctx_.drone, tol, tol_yaw)) return BT::NodeStatus::RUNNING;
+
+    if (etapa_ == 0) {
+      etapa_ = 1;
+      mov_.iniciar(paraOdometria(ctx_, fim_), yawParaOdometria(ctx_, yaw_fim_), z_);
+      return BT::NodeStatus::RUNNING;
+    }
+    ctx_.drone->log("Sobre a plataforma.");
+    return BT::NodeStatus::SUCCESS;
+  }
+
+ private:
+  int etapa_{0};
+  Eigen::Vector2d meio_, fim_;
+  double yaw_meio_{0.0}, yaw_fim_{0.0}, z_{-1.0};
+};
+
 // ── Condições da rota ───────────────────────────────────────────────────────
 
 /// SUCCESS enquanto houver passo a executar.

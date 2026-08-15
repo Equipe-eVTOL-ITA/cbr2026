@@ -133,3 +133,15 @@ rota:
   - {comodo: 4, saida: leste}    # estr_2   -> corredor_1
   - {comodo: 5, saida: leste}    # corr_1   -> corredor_2
   - {comodo: 6, saida: norte}    # corr_2   -> FORA (seta azul)
+
+# ONDE POUSAR depois de sair do labirinto, em coordenadas deste mapa.
+#
+# DESCOMENTE E PREENCHA com a posicao real da plataforma central. Ela NAO esta
+# suposta aqui de proposito: as dimensoes dos comodos dao para estimar a partir
+# das areas do edital, mas a posicao da plataforma nao -- e errar significa
+# pousar fora dela.
+#
+# Sem esta chave, a missao sai do labirinto e pousa onde esta, dizendo no log
+# que a plataforma nao foi declarada.
+#
+# plataforma: {x: 0.0, y: 0.0}

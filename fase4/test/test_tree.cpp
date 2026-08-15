@@ -38,6 +38,7 @@ BT::BehaviorTreeFactory fabricaDaMissao()
     factory.registerNodeType<fase4::CentralizarNoComodo>("CentralizarNoComodo");
     factory.registerNodeType<fase4::AlinharComAJanela>("AlinharComAJanela");
     factory.registerNodeType<fase4::AtravessarJanela>("AtravessarJanela");
+    factory.registerNodeType<fase4::IrParaPlataforma>("IrParaPlataforma");
     factory.registerNodeType<fase4::AindaHaPassos>("AindaHaPassos");
     factory.registerNodeType<fase4::RotaCompleta>("RotaCompleta");
     factory.registerNodeType<fase4::ParedePerigosamentePerto>("ParedePerigosamentePerto");

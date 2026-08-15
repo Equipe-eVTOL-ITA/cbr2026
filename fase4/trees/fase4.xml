@@ -62,6 +62,14 @@
         <RotaCompleta/>
 
         <!--
+          Sem a chave `plataforma` no mapa, este no diz isso no log e passa
+          adiante: a posicao da plataforma nao e um numero que se possa supor,
+          e errar e pousar fora dela. Acrescentar a coordenada ao YAML e a
+          ultima coisa que falta para a fase estar completa.
+        -->
+        <IrParaPlataforma/>
+
+        <!--
           Pouso simples, e nao PrecisionLanding.
 
           O PrecisionLanding do stdstates desce sobre um alvo VISTO -- ele le da

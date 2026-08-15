@@ -74,8 +74,18 @@ case "${1:-}" in
         # missao acreditando estar noutro lugar -- e nao ha erro nenhum.
         PX4_GZ_MODEL_POSE="-0.600, 4.175, 0.15, 0.0, 0.0, 0.0"
 
-        # x500 com LIDAR 2D no topo: 1080 amostras, 270 graus, 30 m, 30 Hz.
-        PX4_SIM_MODEL=x500_lidar_2d
+        # O `wanda`: o x500 em escala 0.45, com o mesmo LIDAR 2D no topo
+        # (1080 amostras, 270 graus, 30 m, 30 Hz).
+        #
+        # O x500 NAO SERVE para esta fase: ele tem 0.772 m de envergadura e as
+        # janelas do labirinto tem 0.60 m -- faltam 8.6 cm de cada lado, e nao e
+        # apertado, e impossivel. O wanda tem 0.347 m.
+        #
+        # Gerado por tools/gerar_wanda.py no repositorio PX4-gazebo-models, com
+        # as leis de escala escritas no proprio script: massa NAO segue o cubo,
+        # inercia segue massa vezes comprimento ao quadrado, e a constante do
+        # motor e ajustada para pairar na mesma fracao da rotacao maxima.
+        PX4_SIM_MODEL=wanda
         ;;
     default)
         PX4_GZ_WORLD=default

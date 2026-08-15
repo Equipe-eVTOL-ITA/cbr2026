@@ -172,7 +172,11 @@ rota:
 # das areas do edital, mas a posicao da plataforma nao -- e errar significa
 # pousar fora dela.
 #
-# Sem esta chave, a missao sai do labirinto e pousa onde esta, dizendo no log
-# que a plataforma nao foi declarada.
+# Ela estava no mundo do Gazebo do time o tempo todo: o worlds/fase4.sdf tem um
+# `landing_platform_movel` em (5, 5) do Gazebo. Com o labirinto incluido na
+# origem daquele mundo, as coordenadas do mapa e as do mundo coincidem, entao o
+# numero e o mesmo -- os eixos trocam, mas (5, 5) e simetrico.
 #
-# plataforma: {x: 0.0, y: 0.0}
+# CONFIRME contra a arena real antes do voo: este numero vem do mundo de
+# simulacao, e nao da planta oficial.
+plataforma: {x: 5.0, y: 5.0}

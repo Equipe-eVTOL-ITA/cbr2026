@@ -90,8 +90,15 @@ jobs:
       - name: rosdep
         run: |
           rosdep update --rosdistro ${{ matrix.distro }}
-          if ! rosdep install --from-paths src --ignore-src -y \
-               --rosdistro ${{ matrix.distro }} 2>&1 | tee rosdep.log; then
+
+          # `set -o pipefail` num subshell, e nao `if ! cmd | tee`: num
+          # pipeline o status testado e o do ULTIMO comando, e o `tee` nunca
+          # falha. Sem isto a condicao nunca dispara e o passo volta a ser
+          # exatamente o que era -- escrevi assim na primeira tentativa e o CI
+          # provou.
+          if ! ( set -o pipefail
+                 rosdep install --from-paths src --ignore-src -y \
+                   --rosdistro ${{ matrix.distro }} 2>&1 | tee rosdep.log ); then
             faltando=$(grep -oP "Cannot locate rosdep definition for \[\K[^]]+" \
                        rosdep.log | sort -u | tr '\n' ' ')
             if [ -n "$faltando" ]; then

@@ -5,7 +5,18 @@
 fase4_node:
   ros__parameters:
     # Decolagem (NED: altura negativa e para cima)
-    takeoff_height: -2.5
+    # A ALTURA DE VOO TEM DE FICAR ABAIXO DA PAREDE.
+    #
+    # O padrao do gerador era -2.5 m. As paredes do labirinto tem pouco mais de
+    # um metro: a 2,5 m o LIDAR passa POR CIMA delas e nao ve cômodo nenhum --
+    # e a fase inteira depende de ver o cômodo.
+    #
+    # O sim2d NAO pega este erro: ele e 2D e ignora a altitude, entao o scan
+    # sai igual a qualquer altura. Foi preciso olhar o mundo do Gazebo (paredes
+    # de 1,5 m por suposicao) para o problema aparecer. E uma limitacao do
+    # simulador que vale lembrar: ele responde sobre navegacao no plano, e nada
+    # sobre nada fora dele.
+    takeoff_height: -1.00
     max_vertical_velocity: 1.2
     position_tolerance: 0.15
 

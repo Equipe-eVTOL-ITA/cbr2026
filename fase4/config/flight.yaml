@@ -82,9 +82,9 @@ fase4_node:
     # ONDE O LIDAR ESTA, em relacao ao centro do drone (metros, para a frente).
     #
     # O ajuste de scan devolve a posicao do SENSOR, e nao a do drone. No
-    # x500_lidar_2d o LIDAR fica 12 cm a frente -- MEDIDO no Gazebo, comparando
-    # o alcance para a frente com a planta: previsto 1.525 m do centro, lido
-    # 1.404 m.
+    # `wanda` o LIDAR fica 5,3 cm a frente -- MEDIDO no Gazebo, comparando o
+    # alcance para a frente com a planta: previsto 1.525 m do centro, lido
+    # 1.472 m. (No x500, que e 1/0.45 maior, sao 12 cm.)
     #
     # Doze centimetros num labirinto de folgas de dez e erro sistematico maior
     # que a margem, e sempre na direcao da proa: o drone pararia atras do centro
@@ -92,7 +92,7 @@ fase4_node:
     #
     # O sim2d NAO pega isso: la o LIDAR esta no centro por construcao. Por isso
     # o valor e 0.0 na simulacao 2D e 0.121 no Gazebo e no voo.
-    lidar_offset_frente: 0.121
+    lidar_offset_frente: 0.053
 
     lidar_alcance_max: 8.0
     scan_salto_max: 0.20     # mais folgado: ruido real quebra paredes em pedacos

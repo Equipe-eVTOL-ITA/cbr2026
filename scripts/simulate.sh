@@ -36,6 +36,43 @@ export GZ_SIM_RESOURCE_PATH="$HOME/PX4-gazebo-models/models:${GZ_SIM_RESOURCE_PA
 
 cd "$HOME/PX4-Autopilot"
 
+# ---------------------------------------------------------------------------
+# Sobrou simulacao da vez passada?
+#
+# O `gz sim` SOBREVIVE quando o PX4 morre. Na proxima tentativa o PX4 sobe um
+# gz novo, mas a chamada de servico que pede o spawn do drone pode ir parar no
+# servidor VELHO -- que tem outro mundo e nao responde. O sintoma nao menciona
+# processo nenhum:
+#
+#     ERROR [gz_bridge] Service call timed out. Check GZ_SIM_RESOURCE_PATH
+#     ERROR [init] gz_bridge failed to start and spawn model
+#
+# ...e manda todo mundo mexer no GZ_SIM_RESOURCE_PATH, que esta certo. O drone
+# simplesmente nao aparece.
+#
+# O agente da o mesmo tipo de pista enganosa, uma janela depois:
+#
+#     bind error | port: 8888, errno: 98
+#
+# Melhor recusar de saida, dizendo o que matar.
+# ---------------------------------------------------------------------------
+sobrando=""
+pgrep -x px4            >/dev/null 2>&1 && sobrando+=" px4"
+pgrep -f 'gz sim'       >/dev/null 2>&1 && sobrando+=" gz"
+pgrep -x MicroXRCEAgent >/dev/null 2>&1 && sobrando+=" agente"
+
+if [[ -n "$sobrando" ]]; then
+    echo "ERRO: ja ha simulacao rodando ($sobrando)." >&2
+    echo >&2
+    echo "      O gz sim sobrevive quando o PX4 morre, e a proxima tentativa" >&2
+    echo "      falha com 'Service call timed out' -- que aponta para o lugar" >&2
+    echo "      errado. O drone nao aparece e a mensagem fala de outra coisa." >&2
+    echo >&2
+    echo "      Rode a task 'sim: parar tudo', ou:" >&2
+    echo "          pkill -x px4; pkill -f 'gz sim'; pkill -x MicroXRCEAgent" >&2
+    exit 1
+fi
+
 PX4_SYS_AUTOSTART=4001
 
 case "${1:-}" in
@@ -51,21 +88,30 @@ case "${1:-}" in
         PX4_SIM_MODEL=x500_cbr2026                      # modelo do drone
         ;;
     fase4)
-        PX4_GZ_WORLD=fase4
-
-        # AS PAREDES DO LABIRINTO SAO REGERADAS AQUI, a cada simulacao.
+        # NOME PROPRIO, e nao `fase4`.
         #
-        # Elas saem do MESMO YAML que a missao le. Se o mapa mudasse e o .sdf
-        # nao, o drone voaria num labirinto diferente do que a missao acredita
-        # -- e nada acusaria: cada arquivo estaria certo sozinho.
+        # Ja existe um worlds/fase4.sdf no PX4-gazebo-models, de outra prova:
+        # arena, banner e plataformas. Gerar por cima dele destruiria aquilo --
+        # eu fiz exatamente isso uma vez, e so percebi porque o `git status`
+        # marcou o arquivo como MODIFICADO em vez de novo.
+        #
+        # O nome segue a convencao que a fase 1 ja usa: cbr2026_<fase>.
+        PX4_GZ_WORLD=cbr2026_fase4
+
+        # O MUNDO E REGERADO AQUI, a cada simulacao, e contem SO o labirinto e
+        # o chao de grama.
+        #
+        # Ele sai do MESMO YAML que a missao le. Se o mapa mudasse e o .sdf nao,
+        # o drone voaria num labirinto diferente do que a missao acredita -- e
+        # nada acusaria: cada arquivo estaria certo sozinho.
         #
         # Regerar custa um piscar de olhos e elimina a classe inteira de
         # problema. Fica aqui, e nao numa task separada, porque o caminho para
         # rodar uma simulacao tem de ser o mesmo para todas as fases.
-        echo "Regerando as paredes do labirinto a partir do mapa da fase 4..."
+        echo "Regerando o mundo da fase 4 a partir do mapa..."
         ros2 run sim2d gerar_sdf fase4:cbr2026_fase4.yaml \
-            --modelo --nome labirinto_fase4 \
-            -o "$HOME/PX4-gazebo-models/models/labirinto_fase4/model.sdf"
+            --nome cbr2026_fase4 \
+            -o "$HOME/PX4-gazebo-models/worlds/cbr2026_fase4.sdf"
 
         # A POSE ESTA EM ENU, e o mapa esta em NED. Os eixos TROCAM:
         #

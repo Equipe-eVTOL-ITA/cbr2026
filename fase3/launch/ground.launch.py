@@ -2,9 +2,9 @@
 """Launch de SOLO da fase3 — roda no COMPUTADOR DE TERRA.
 
 Recebe a imagem do drone pela rede, reconhece os gestos e roda a FSM. A camera
-NAO sobe aqui: ela esta no drone, com onboard.launch.py.
+NAO sobe aqui: ela esta no drone, com flight.launch.py.
 
-Suba o onboard PRIMEIRO. Este launch espera 8 s antes de iniciar a FSM, mas se
+Suba o flight PRIMEIRO. Este launch espera 8 s antes de iniciar a FSM, mas se
 o drone ainda nao estiver publicando imagem, o drone vai decolar e girar
 procurando uma mao que ninguem esta enxergando.
 """

@@ -1,24 +1,5 @@
 #pragma once
 
-// SearchHandState — gira procurando a mão do operador.
-//
-// A navegação (girar dentro de um setor, invertendo nos extremos, sem quebrar
-// na descontinuidade em pi) é genérica e vem herdada do `YawSweepState`. O que
-// fica aqui é a regra da fase: qual gesto significa "achei", e por quanto tempo
-// ele precisa aparecer.
-//
-// Mesmo padrão de `SearchBaseState` sobre `WaypointListState` na fase 1.
-//
-// Contrato com a blackboard:
-//
-//   entrada   "vision"            std::shared_ptr<GestureFase3>
-//   opcional  "hand_found_gesture" std::string  (padrão: "Open_Palm")
-//             + tudo o que o YawSweepState exige
-//
-// Outcomes: ""            (procurando)
-//           "HAND FOUND"  (gesto de chamada, estável)
-//           "ERROR"
-
 #include <memory>
 #include <string>
 
@@ -63,12 +44,6 @@ public:
     (void)blackboard;
     if (!ok_) return "ERROR";
 
-    // A confirmação é por ciclos CONSECUTIVOS, não por um quadro solto.
-    //
-    // O classificador oscila, e girar sobre o próprio eixo passa a mão pelo
-    // campo de visão de raspão. Sem confirmação, o drone pararia de girar por
-    // causa de um único quadro em que a silhueta de qualquer coisa foi
-    // classificada como palma aberta.
     if (vision_->gesture() == gesto_de_chamada_) {
       ciclos_com_gesto_++;
     } else {

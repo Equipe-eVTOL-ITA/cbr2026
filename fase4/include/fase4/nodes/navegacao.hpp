@@ -1,22 +1,14 @@
 #ifndef FASE4__NODES__NAVEGACAO_HPP_
 #define FASE4__NODES__NAVEGACAO_HPP_
 
-// Os nós que movem o drone pelo labirinto.
-//
-// O CICLO DE UM CÔMODO, e por que ele tem três partes
+// Ciclo em um cômodo
 //
 //   CentralizarNoComodo   olha o LIDAR, corrige o VIÉS da odometria, e vai
 //                         para o centro. É a única parte em que a localização
 //                         é refeita.
 //   AlinharComAJanela     desliza até o alinhamento lateral do vão e vira de
-//                         frente para ele. Ainda dá para errar aqui.
-//   AtravessarJanela      avança em MALHA ABERTA. Aqui já não dá.
-//
-// A separação existe por causa da última linha. Dentro do vão o LIDAR vê duas
-// paredes muito próximas e nenhuma geometria de cômodo: qualquer correção ali
-// usa uma fórmula que supõe um cômodo e recebe outra coisa. A resposta certa é
-// SUSPENDER a correção, o que só é seguro se o alinhamento já estiver feito --
-// daí o passo do meio ser um passo separado, e não o começo da travessia.
+//                         frente para ele.
+//   AtravessarJanela      avança em MALHA ABERTA.
 
 #include <algorithm>
 #include <memory>
@@ -36,18 +28,6 @@ inline maze_geometry::ParamsAjuste paramsDoAjuste(fsm::Blackboard* bb) {
   return p;
 }
 
-/**
- * @brief Entra no labirinto pela janela de entrada.
- *
- * Dois trechos, ambos axiais: primeiro até o ponto alinhado com o vão, ainda do
- * lado de fora; depois para dentro. O primeiro trecho existe para o caso de a
- * decolagem não deixar o drone exatamente na frente da janela -- e a decolagem
- * nunca deixa.
- *
- * NÃO usa o LIDAR. Do lado de fora não há cômodo conhecido para casar com o
- * scan, e o viés inicial vem da posição de decolagem, que é medida e não
- * estimada.
- */
 class EntrarNaCasa : public NoDaFase {
  public:
   using NoDaFase::NoDaFase;

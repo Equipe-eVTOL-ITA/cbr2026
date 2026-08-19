@@ -121,7 +121,17 @@ fase1_vision:
 base_detector:
   ros__parameters:
     # [VOO] Publicado pelo camera_publisher, nao pela ponte do Gazebo.
-    image_topic: '/vertical_camera/image/compressed'
+    # SEM `/image/` no meio. A convencao do camera_publisher e
+    # `<papel>_camera/compressed`, e ela vale para as quatro cameras -- webcam,
+    # raspicam, jetson e oak. Trocar o hardware na mesma posicao do drone nao
+    # muda o topico.
+    #
+    # Este valor ja esteve errado: pedia `/vertical_camera/image/compressed`
+    # enquanto o launch subia o `webcam`, que publica sem o `/image/`. O
+    # detector subiria, nao reclamaria, e nunca receberia quadro -- a missao
+    # voaria CEGA. E o mesmo defeito que fez a fase 3 girar procurando uma mao
+    # que ninguem enxergava.
+    image_topic: '/vertical_camera/compressed'
     detection_topic: '/base_detector/detections'
 
     # [VOO] Frequencia menor: a Jetson e a Raspberry dividem CPU com a FSM, a

@@ -12,7 +12,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
-// Estados padrao, do stdstates -- servem a qualquer missao.
+// Estados padrao, do stdstates
 #include "stdstates/arming_state.hpp"
 #include "stdstates/takeoff_state.hpp"
 #include "stdstates/yaw_sweep_state.hpp"
@@ -25,12 +25,6 @@
 #include "fase3/states/search_hand_state.hpp"
 #include "fase3/states/gesture_control_state.hpp"
 
-/**
- * @brief Maquina de estados da missao fase3.
- *
- * Ja vem com o ciclo minimo que toda missao tem: armar, decolar, pousar.
- * Para estender, veja os blocos marcados com ACRESCENTE.
- */
 class Fase3FSM : public fsm::FSM {
 public:
     Fase3FSM(
@@ -39,8 +33,6 @@ public:
         const std::map<std::string, std::variant<double, std::string>> &params
     ) : fsm::FSM({"ERROR", "FINISHED"}) {
 
-        // O drone e o no de visao ficam na blackboard: todo estado os acessa
-        // por aqui. Em 2025 a leitura de gestos vivia dentro do proprio Drone.
         this->blackboard_set<std::shared_ptr<Drone>>("drone", drone);
         this->blackboard_set<std::shared_ptr<GestureFase3>>("vision", vision);
 
@@ -61,16 +53,8 @@ public:
 
         // ========================= ESTADOS =========================
         this->add_state("ARMING",  std::make_unique<ArmingState>());
-
-        // DUAS decolagens. TakeoffState() reancora o referencial do mundo na
-        // posicao atual (setHomePosition), o que e necessario na decolagem
-        // INICIAL, depois de armar, com o EKF ja convergido. Na REDECOLAGEM
-        // seria destrutivo: a origem do mundo pularia para onde o drone pousou,
-        // e a posicao de casa passaria a apontar para um referencial extinto.
-        // Ver stdstates v0.2.1 e o que aconteceu na fase 1.
         this->add_state("TAKEOFF",       std::make_unique<TakeoffState>(true));
         this->add_state("TAKEOFF AGAIN", std::make_unique<TakeoffState>(false));
-
         this->add_state("SEARCH HAND",       std::make_unique<SearchHandState>());
         this->add_state("GESTURE CONTROL",   std::make_unique<GestureControlState>());
         this->add_state("PRECISION LANDING", std::make_unique<PrecisionLandingState>());
@@ -78,7 +62,6 @@ public:
         this->add_state("LAND AND DISARM",   std::make_unique<LandAndDisarmState>());
 
         // ======================= TRANSICOES ========================
-        // Cada linha e: {outcome retornado pelo estado, proximo estado}.
         this->add_transitions("ARMING", {
             {"ARMED", "TAKEOFF"},
             {"ERROR", "ERROR"}
@@ -94,10 +77,6 @@ public:
             {"ERROR", "ERROR"}
         });
 
-        // Perder a mao volta para a BUSCA, e nao aborta. O operador pode ter
-        // saido do quadro porque o drone girou demais, e girar de volta e
-        // exatamente o que resolve. Em 2025 nao havia esta saida: o estado
-        // ficava controlando com a ultima posicao vista.
         this->add_transitions("GESTURE CONTROL", {
             {"LAND NOW",  "PRECISION LANDING"},
             {"GO HOME",   "RETURN HOME"},
@@ -105,8 +84,6 @@ public:
             {"ERROR", "ERROR"}
         });
 
-        // Pousou por gesto: redecola e volta a obedecer. E o ciclo que permite
-        // ao operador usar o pouso como pausa.
         this->add_transitions("PRECISION LANDING", {
             {"LANDED", "TAKEOFF AGAIN"},
             {"ERROR", "ERROR"}
@@ -122,9 +99,6 @@ public:
             {"ERROR", "ERROR"}
         });
 
-        // TIMEOUT tambem termina a missao, mas por um caminho proprio: o log
-        // diz que o drone pode ter ficado armado, o que ninguem quer descobrir
-        // caminhando ate ele.
         this->add_transitions("LAND AND DISARM", {
             {"DISARMED", "FINISHED"},
             {"TIMEOUT",  "FINISHED"},
@@ -135,12 +109,6 @@ public:
     }
 };
 
-/**
- * @brief No ROS 2 que executa a FSM da missao fase3.
- *
- * Declara os parametros (sobrescritos pelo YAML no launch), monta a FSM e a
- * executa a 20 Hz.
- */
 class Fase3Node : public rclcpp::Node {
 public:
     Fase3Node(std::shared_ptr<Drone> drone, std::shared_ptr<GestureFase3> vision)
@@ -182,6 +150,16 @@ public:
             {"detection_timeout",        3.0},
             {"command_confirm_cycles",  10.0},
 
+            // Rastreio por guinada. 0 = DESLIGADO, e o padrao e deliberado: a
+            // camera vai presa ao drone, entao girar move o proprio sensor, e o
+            // drone acaba orbitando o operador em vez de andar reto.
+            {"yaw_tracking",             0.0},
+
+            // Rastreio em altura. 0 = DESLIGADO. A altitude vira setpoint de
+            // POSICAO (setMixedSetpoint), mantida onde a decolagem deixou; um
+            // comando de translacao nao mexe nela.
+            {"climb_tracking",           0.0},
+
             // PID de guinada (mantem a mao centrada em x)
             {"yaw_pid_kp",               0.6},
             {"yaw_pid_ki",               0.0},
@@ -204,13 +182,6 @@ public:
         // Trajetoria para o RViz2 (convertida de NED para ENU).
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/drone_trajectory", 10);
         trajectory_.header.frame_id = "map";
-
-        // ACRESCENTE: assinaturas dos nos de visao desta missao. O padrao e o
-        // callback escrever na blackboard e os estados apenas lerem de la.
-        //
-        // cv_sub_ = this->create_subscription<custom_msgs::msg::MinhaDeteccao>(
-        //     "minha_deteccao", 10,
-        //     std::bind(&Fase3Node::cv_callback, this, std::placeholders::_1));
 
         RCLCPP_INFO(this->get_logger(), "FSM da missao fase3 iniciada");
     }
@@ -280,22 +251,12 @@ private:
 int main(int argc, const char *argv[]) {
     rclcpp::init(argc, argv);
 
-    // O Drone JA sobe o proprio executor e a propria thread de spin no
-    // construtor (veja drone_lib/src/Drone.cpp). Adiciona-lo a um executor
-    // aqui lanca em tempo de execucao:
-    //
-    //     terminate called after throwing an instance of 'std::runtime_error'
-    //       what():  Node '/Drone' has already been added to an executor.
-    //
-    // Por isso so o no da missao entra no executor deste main.
     auto drone        = std::make_shared<Drone>();
     auto vision       = std::make_shared<GestureFase3>();
     auto mission_node = std::make_shared<Fase3Node>(drone, vision);
 
     rclcpp::executors::MultiThreadedExecutor executor;
-    // O no de visao E um rclcpp::Node comum e PRECISA entrar no executor. Sem
-    // isso o callback de gestos nunca roda e a missao fica cega sem dizer por
-    // que -- o drone giraria para sempre procurando uma mao.
+    
     executor.add_node(vision);
     executor.add_node(mission_node);
     executor.spin();

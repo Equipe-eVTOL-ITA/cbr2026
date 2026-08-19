@@ -1,30 +1,7 @@
 #pragma once
 
-// GestureControlState — o drone obedece à mão.
-//
-// Enquanto está neste estado, o drone faz duas coisas ao mesmo tempo:
-//
-//   - MANTÉM A MÃO CENTRADA na imagem, por PID: o erro horizontal do centroide
-//     vira taxa de guinada, o vertical vira velocidade de subida/descida. É o
-//     que faz o drone acompanhar o operador sem que ele precise mandar;
-//   - OBEDECE ao gesto direcional, deslocando-se em eixos do corpo.
-//
-// Contrato com a blackboard:
-//
-//   entrada  "vision"          std::shared_ptr<GestureFase3>
-//            "control_speed"           float
-//            "max_horizontal_velocity" float
-//            "detection_timeout"       float
-//            "command_confirm_cycles"  float
-//            "yaw_pid_kp" / "_ki" / "_kd"     float
-//            "climb_pid_kp" / "_ki" / "_kd"   float
-//
-// Outcomes: ""            (controlando)
-//           "LAND NOW"    (Thumb_Down confirmado)
-//           "GO HOME"     (Open_Palm confirmado)
-//           "LOST HAND"   (sem mão há tempo demais)
-//           "ERROR"
-
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -34,7 +11,6 @@
 #include "fsm/fsm.hpp"
 #include "drone/Drone.hpp"
 #include "drone/PidController.hpp"
-#include "drone/transformations.hpp"
 
 #include "stdstates/blackboard_params.hpp"
 
@@ -52,9 +28,10 @@ public:
   void on_enter(fsm::Blackboard & blackboard) override
   {
     ok_ = false;
-    ciclos_confirmando_ = 0;
-    gesto_em_confirmacao_.clear();
+
+    confirmador_.reiniciar();
     log_counter_ = 0;
+    ultimo_act_ = std::chrono::steady_clock::now();
 
     auto drone_ptr = blackboard.get<std::shared_ptr<Drone>>("drone");
     if (drone_ptr == nullptr) return;
@@ -76,6 +53,15 @@ public:
     if (!stdstates::require(blackboard, drone_, "detection_timeout", timeout_)) return;
     if (!stdstates::require(blackboard, drone_, "command_confirm_cycles", confirmacoes_)) return;
 
+    yaw_tracking_ = stdstates::optional<float>(blackboard, "yaw_tracking", 0.0f) > 0.5f;
+
+    climb_tracking_ = stdstates::optional<float>(blackboard, "climb_tracking", 0.0f) > 0.5f;
+
+    max_vz_ = stdstates::optional<float>(blackboard, "max_vertical_velocity", 1.0f);
+
+    z_ref_ = static_cast<float>(drone_->getLocalPosition().z());
+    yaw_ref_ = static_cast<float>(drone_->getOrientation().z());
+
     float ykp = 0, yki = 0, ykd = 0, ckp = 0, cki = 0, ckd = 0;
     if (!stdstates::require(blackboard, drone_, "yaw_pid_kp", ykp)) return;
     if (!stdstates::require(blackboard, drone_, "yaw_pid_ki", yki)) return;
@@ -84,12 +70,6 @@ public:
     if (!stdstates::require(blackboard, drone_, "climb_pid_ki", cki)) return;
     if (!stdstates::require(blackboard, drone_, "climb_pid_kd", ckd)) return;
 
-    // Setpoint 0.5: o centro da imagem, em coordenada normalizada.
-    //
-    // O sample_time explícito é obrigatório. Com o padrão de 0.05 s igual ao
-    // timer da FSM, `compute()` devolve 0.0f — não o último valor — sempre que
-    // o jitter faz o intervalo ficar de menos. O sintoma é um drone que
-    // "engasga", e é indistinguível de PID mal sintonizado.
     pid_yaw_ = PidController(ykp, yki, ykd, 0.5f, stdstates::kPidSampleTime);
     pid_climb_ = PidController(ckp, cki, ckd, 0.5f, stdstates::kPidSampleTime);
     pid_yaw_.reset();
@@ -104,15 +84,9 @@ public:
     if (!ok_) return "ERROR";
     log_counter_++;
 
-    // NÃO HÁ `usleep` AQUI, e a ausência é o ponto.
-    //
-    // A versão de 2025 terminava o `act()` com `usleep(50000)`, sobre um timer
-    // que já é de 50 ms. Isso bloqueia a thread do executor: a telemetria, a
-    // visão e o próprio `Drone` param de responder por meio ciclo, e a taxa
-    // efetiva da FSM cai pela metade. O timer já dá o ritmo.
 
     if (vision_->secondsSinceHand() > timeout_) {
-      drone_->setLocalVelocity(0.0, 0.0, 0.0, 0.0);
+      drone_->setMixedSetpoint(0.0f, 0.0f, z_ref_, yaw_ref_);
       drone_->log(
         "Mao perdida: " + std::to_string(vision_->secondsSinceHand()) +
         "s sem posicao (limite " + std::to_string(timeout_) + "s).");
@@ -122,46 +96,32 @@ public:
     const auto [hand_x, hand_y] = vision_->hand();
     const std::string gesto = vision_->gesture();
 
-    // Correção contínua para manter a mão no centro do quadro. Vale para
-    // qualquer gesto, inclusive nenhum.
-    const float yaw_rate = pid_yaw_.compute(hand_x);
+    const float passo = dt();
 
-    // Sinal invertido: y da imagem cresce para BAIXO, e z do corpo também. Mão
-    // acima do centro (y pequeno) tem de fazer o drone SUBIR, isto é z
-    // negativo. O PID já devolve erro positivo nesse caso, daí a negação.
-    const float climb_rate = -pid_climb_.compute(hand_y);
-
-    // Os comandos que ENCERRAM o controle exigem confirmação; os direcionais
-    // não. A assimetria é deliberada: pousar e voltar para casa são
-    // irreversíveis dentro desta fase, enquanto andar para a frente se corrige
-    // sozinho no ciclo seguinte. Um único quadro mal classificado não pode
-    // mandar o drone pousar.
-    if (fase3::ehGestoDeEncerramento(gesto)) {
-      if (gesto == gesto_em_confirmacao_) {
-        ciclos_confirmando_++;
-      } else {
-        gesto_em_confirmacao_ = gesto;
-        ciclos_confirmando_ = 1;
-      }
-
-      if (ciclos_confirmando_ >= static_cast<int>(confirmacoes_)) {
-        drone_->setLocalVelocity(0.0, 0.0, 0.0, 0.0);
-        if (gesto == fase3::kGestoPousar) {
-          drone_->log("Comando: POUSAR");
-          return "LAND NOW";
-        }
-        drone_->log("Comando: VOLTAR PARA CASA");
-        return "GO HOME";
-      }
-    } else {
-      gesto_em_confirmacao_.clear();
-      ciclos_confirmando_ = 0;
+    if (yaw_tracking_) {
+      yaw_ref_ += pid_yaw_.compute(hand_x) * passo;
     }
 
-    // Gesto direcional -> velocidade em eixos do CORPO, depois rotacionada
-    // para o mundo pelo yaw atual. Sem isso o "para a frente" do operador
-    // seria o +x do mundo, e não a frente do drone.
-    Eigen::Vector3d v_corpo = fase3::velocidadeDoGesto(gesto, control_speed_, climb_rate);
+    if (climb_tracking_) {
+      const float climb_rate =
+        std::clamp(-pid_climb_.compute(hand_y), -max_vz_, max_vz_);
+      z_ref_ += climb_rate * passo;
+    }
+
+    const std::string confirmado =
+      confirmador_.atualiza(gesto, static_cast<int>(confirmacoes_));
+
+    if (!confirmado.empty()) {
+      drone_->setMixedSetpoint(0.0f, 0.0f, z_ref_, yaw_ref_);
+      if (confirmado == fase3::kGestoPousar) {
+        drone_->log("Comando: POUSAR");
+        return "LAND NOW";
+      }
+      drone_->log("Comando: VOLTAR PARA CASA");
+      return "GO HOME";
+    }
+
+    Eigen::Vector3d v_corpo = fase3::velocidadeDoGesto(gesto, control_speed_, 0.0);
 
     Eigen::Vector2d horizontal(v_corpo.x(), v_corpo.y());
     if (horizontal.norm() > max_vel_) {
@@ -170,16 +130,17 @@ public:
       v_corpo.y() = horizontal.y();
     }
 
-    const Eigen::Vector3d v_mundo =
-      adjust_velocity_using_yaw(v_corpo, drone_->getOrientation().z());
-
-    drone_->setLocalVelocity(v_mundo.x(), v_mundo.y(), v_mundo.z(), yaw_rate);
+    drone_->setMixedSetpoint(
+      static_cast<float>(v_corpo.x()), static_cast<float>(v_corpo.y()),
+      z_ref_, yaw_ref_);
 
     if (log_counter_ % 20 == 0) {
       drone_->log(
         "Gesto: '" + (gesto.empty() ? std::string("-") : gesto) +
         "' | mao=(" + std::to_string(hand_x) + ", " + std::to_string(hand_y) +
-        ") | guinada=" + std::to_string(yaw_rate));
+        ") | z_ref=" + std::to_string(z_ref_) +
+        " z=" + std::to_string(drone_->getLocalPosition().z()) +
+        (confirmador_.travado() ? " | (solte a mao para habilitar os comandos)" : ""));
     }
 
     return "";
@@ -189,11 +150,19 @@ public:
   {
     (void)blackboard;
     if (drone_ != nullptr) {
-      drone_->setLocalVelocity(0.0, 0.0, 0.0, 0.0);
+      drone_->setMixedSetpoint(0.0f, 0.0f, z_ref_, yaw_ref_);
     }
   }
 
 private:
+  float dt()
+  {
+    const auto agora = std::chrono::steady_clock::now();
+    const std::chrono::duration<float> passado = agora - ultimo_act_;
+    ultimo_act_ = agora;
+    return std::clamp(passado.count(), 0.0f, 0.2f);
+  }
+
   std::shared_ptr<Drone> drone_;
   std::shared_ptr<GestureFase3> vision_;
 
@@ -204,9 +173,18 @@ private:
   float max_vel_ = 0.0f;
   float timeout_ = 0.0f;
   float confirmacoes_ = 5.0f;
+  float max_vz_ = 1.0f;
 
-  std::string gesto_em_confirmacao_;
-  int ciclos_confirmando_ = 0;
+  bool yaw_tracking_ = false;
+  bool climb_tracking_ = false;
+
+  // O que o estado defende enquanto obedece aos gestos.
+  float z_ref_ = 0.0f;
+  float yaw_ref_ = 0.0f;
+
+  std::chrono::steady_clock::time_point ultimo_act_;
+
+  fase3::ConfirmadorDeEncerramento confirmador_;
   int log_counter_ = 0;
   bool ok_ = false;
 };

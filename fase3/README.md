@@ -31,7 +31,7 @@ ros2 topic bw /camera/image/compressed
 | launch | onde roda | o que sobe |
 |---|---|---|
 | `simulation.launch.py` | uma máquina só | webcam local + detector + missão |
-| `onboard.launch.py` | **drone** | só a câmera |
+| `flight.launch.py` | **drone** | só a câmera |
 | `ground.launch.py` | **solo** | detector + missão + gravação |
 | `replay.launch.py` | qualquer | só a missão, consumindo um bag |
 
@@ -53,9 +53,10 @@ classificador. Foi o que 2025 fez.
 
 ### Voo
 
-Suba o **onboard primeiro**. O `ground.launch.py` espera 8 s antes de iniciar a
-FSM, mas se o drone ainda não estiver publicando imagem quando ela começar, o
-drone decola e gira procurando uma mão que ninguém está enxergando.
+Suba o **`flight.launch.py` primeiro** — é o que roda no drone. O
+`ground.launch.py` espera 8 s antes de iniciar a FSM, mas se o drone ainda não
+estiver publicando imagem quando ela começar, o drone decola e gira procurando
+uma mão que ninguém está enxergando.
 
 ## Vocabulário de gestos
 
@@ -69,17 +70,75 @@ drone decola e gira procurando uma mão que ninguém está enxergando.
 | `Thumb_Down` | — | **pousa** |
 | qualquer outro | — | mantém posição |
 
-O `Open_Palm` tem dois papéis. Não é conflito — os estados são exclusivos — mas
-é uma armadilha para quem for mexer no vocabulário sem ler os dois estados.
-
 **Os comandos direcionais valem no ato; `Thumb_Down` e `Open_Palm` exigem
 confirmação** (`command_confirm_cycles`, 10 ciclos = meio segundo a 20 Hz). A
 assimetria é deliberada: andar para a frente se corrige sozinho no ciclo
 seguinte, pousar não.
 
-Enquanto obedece, o drone também **mantém a mão centrada no quadro** por PID: o
-erro horizontal vira guinada, o vertical vira subida. É o que faz ele acompanhar
-o operador sem que seja preciso mandar.
+### Solte a mão depois de chamar o drone
+
+O `Open_Palm` tem dois papéis, e o gesto **atravessa a transição de estado**: a
+palma que chamou o drone continua no quadro quando o `GESTURE CONTROL` começa a
+contar, e completava a confirmação sozinha. O drone voltava para casa meio
+segundo depois de encontrar a mão. (O mesmo pelo outro caminho: um `Thumb_Down`
+ainda na mão fazia o drone pousar de novo assim que o `TAKEOFF AGAIN` terminava.)
+
+Por isso o `GESTURE CONTROL` entra **travado**: nenhum gesto de encerramento
+conta até o estado ver um ciclo sem gesto de encerramento. Na prática, **baixe a
+mão — ou faça um direcional — depois que o drone te achar**; enquanto a trava
+segura, o log avisa. A regra é `fase3::ConfirmadorDeEncerramento`, em
+`gesture_commands.hpp`, e é testada como função pura.
+
+## Como o setpoint é montado
+
+Enquanto obedece aos gestos, o drone **anda em XY por velocidade e mantém Z por
+posição**, num setpoint só, via `Drone::setMixedSetpoint`:
+
+| eixo | modo | por quê |
+|---|---|---|
+| XY | velocidade (eixos do corpo) | o gesto é uma direção, não um destino |
+| Z | **posição** (`z_ref`) | altitude é para ser mantida, não integrada |
+| rumo | posição (`yaw_ref`) | congelado na entrada do estado |
+
+**`setLocalVelocity` sozinho não mantém altitude.** Comandar `vz = 0` pede taxa
+vertical zero, e o PX4 obedece — mas não há realimentação de **posição** em z:
+qualquer viés (estimador, empuxo, efeito de solo) integra livre e o drone afunda
+sem que nada no laço perceba. Com z como setpoint de posição, o controlador do
+PX4 fecha a malha e o drone volta sozinho.
+
+`setLocalPosition` para tudo resolveria z, mas exigiria um alvo em XY que esta
+fase não tem.
+
+> **Armadilha de referencial.** `setMixedSetpoint` rotaciona `vx`/`vy` pelo yaw
+> **atual** e espera velocidade em eixos do **corpo**. `setLocalVelocity`
+> rotaciona pelo yaw **inicial**, e por isso exigia `adjust_velocity_using_yaw`
+> antes. Passar o vetor já rotacionado para o mixed rotaciona **duas vezes**.
+
+## O drone não gira nem sobe enquanto obedece
+
+Os dois rastreios da mão — em guinada e em altura — estão **desligados por
+padrão** (`yaw_tracking: 0.0`, `climb_tracking: 0.0`).
+
+Em **altura**, o PID perseguia a mão em `y = 0.5` o tempo todo, inclusive
+durante os direcionais. Com o drone a 1.8 m e a mão do operador na altura do
+peito, o erro tem sinal constante: o drone **descia enquanto andava**. Não era
+deriva — era o laço fazendo o que foi mandado. Ligado (`climb_tracking: 1.0`), o
+PID volta, mas movendo a **referência** `z_ref` em vez de mandar velocidade,
+limitado por `max_vertical_velocity`.
+
+Em **guinada**, o problema é outro: a **câmera vai presa ao drone**, então
+girar move o próprio sensor. Enquanto o drone translada, o operador atravessa o
+quadro, o PID persegue, e o drone **orbita o operador em vez de andar reto** —
+e como o gesto é interpretado em eixos do **corpo**, a direção de "frente" gira
+junto e o deslocamento vira uma espiral. Rastrear em altura não tem esse
+problema: subir e descer não reorienta a câmera.
+
+O custo de desligar: transladando muito para os lados, o operador sai do quadro
+e a missão cai em `LOST HAND` → `SEARCH HAND`, que gira para reachar. É o
+comportamento desejado — o drone gira para **procurar**, não para perseguir.
+
+Para reativar, `yaw_tracking: 1.0` no YAML; os ganhos `yaw_pid_*` só têm efeito
+nesse caso.
 
 ## Máquina de estados
 
@@ -123,7 +182,7 @@ Três decisões que diferem de 2025:
 colcon test --packages-select fase3 --ctest-args -R test_gesture_commands
 ```
 
-12 testes do vocabulário. Em 2025 essa regra vivia num método privado de um
+Testes do vocabulário e da trava de entrada. Em 2025 essa regra vivia num método privado de um
 estado que exigia um `Drone` para ser instanciado — conferir para que lado o
 drone ia significava subir simulação e olhar.
 

@@ -1,27 +1,5 @@
 #pragma once
 
-// Nó de visão da fase 3: cola entre o gesture_detector e a missão.
-//
-// É o análogo do `VisionFase1` da fase 1, e existe pelo mesmo motivo. Em 2025
-// esta ligação vivia dentro do `drone_lib` — a abstração do PX4 assinava
-// tópicos de gesto e guardava o estado. Duas coisas erradas nisso:
-//
-//   1. a classe que fala com o piloto automático não deveria saber o que é uma
-//      mão;
-//   2. `gestures_` era escrito pelo callback numa thread do executor e lido
-//      pela FSM noutra, SEM MUTEX.
-//
-// (E, na versão de 2026, as inscrições nunca chegaram a ser criadas: os getters
-// devolviam constantes para sempre. Ver drone_lib v0.3.0.)
-//
-// O que vive aqui:
-//
-//   - assinatura dos dois tópicos do gesture_detector;
-//   - o estado, protegido;
-//   - a IDADE da última detecção, que é o que permite à FSM distinguir "o
-//     operador está parado" de "o classificador calou";
-//   - a regra de QUAL MÃO manda, aplicada num lugar só.
-
 #include <chrono>
 #include <mutex>
 #include <string>
@@ -41,19 +19,6 @@ public:
     this->declare_parameter<std::string>("gesture_topic", "/gesture_detector/gestures");
     this->declare_parameter<std::string>("hand_topic", "/gesture_detector/hand_location");
 
-    // QUAL MÃO MANDA — e a mesma resposta vale para a busca e para o controle.
-    //
-    // Em 2025 o `SearchState` lia `gestures[0]` e o `GestureControlState` lia
-    // `gestures[1]`. Os dois não podiam estar certos ao mesmo tempo, e com uma
-    // mão só no quadro o controle direcional simplesmente não respondia.
-    //
-    // A causa de fundo era outra e já foi corrigida rio acima: o classificador
-    // de 2025 filtrava as mãos não reconhecidas ao montar a mensagem, então o
-    // índice não identificava a mão. O gesture_detector de 2026 publica sempre
-    // `num_hands` posições, com string vazia onde não houve gesto — o índice
-    // voltou a significar a mão.
-    //
-    // Com o índice confiável, a escolha vira um parâmetro só, aplicado aqui.
     this->declare_parameter<int>("controlling_hand", 0);
 
     hand_index_ = this->get_parameter("controlling_hand").as_int();
@@ -80,7 +45,7 @@ public:
       gesture_topic.c_str(), hand_topic.c_str(), hand_index_);
   }
 
-  /// Gesto da mão de controle, ou "" se não há.
+  // Gesto da mão de controle, ou "" se não há.
   std::string gesture() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -90,7 +55,7 @@ public:
     return gestures_[hand_index_];
   }
 
-  /// Segundos desde a última mensagem de gesto COM a mão de controle presente.
+  // Segundos desde a última mensagem de gesto com a mão de controle presente.
   double secondsSinceGesture() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -99,7 +64,7 @@ public:
     return dt.count();
   }
 
-  /// Segundos desde a última posição de mão recebida.
+  // Segundos desde a última posição de mão recebida.
   double secondsSinceHand() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -108,11 +73,6 @@ public:
     return dt.count();
   }
 
-  /// Centroide normalizado da mão, em [0,1]. (0.5, 0.5) é o centro da imagem.
-  ///
-  /// Devolve o último valor recebido mesmo que velho — quem precisa saber se
-  /// ainda vale consulta `secondsSinceHand()`. Misturar as duas coisas num
-  /// valor sentinela só empurraria a decisão para quem chama.
   std::pair<float, float> hand() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -125,9 +85,6 @@ private:
     std::lock_guard<std::mutex> lock(mutex_);
     gestures_ = msg->gestures;
 
-    // A idade só reinicia quando a MÃO DE CONTROLE tem gesto. Uma mensagem em
-    // que só a outra mão aparece não é notícia para esta missão — é justamente
-    // o que o timeout precisa contar.
     if (hand_index_ >= 0 &&
       static_cast<size_t>(hand_index_) < gestures_.size() &&
       !gestures_[hand_index_].empty())

@@ -58,7 +58,46 @@ fase3_node:
     # confirmacao, porque se corrigem sozinhos no ciclo seguinte.
     command_confirm_cycles: 10.0
 
-    # ===== PID de guinada (mantem a mao centrada em x) =====
+    # ===== Rastreio por guinada =====
+    # DESLIGADO (0.0). O drone mantem o rumo enquanto obedece aos gestos.
+    #
+    # Ligado, o drone girava para manter a mao em x=0.5 -- e como a camera vai
+    # PRESA AO DRONE, a guinada move o proprio sensor: enquanto o drone
+    # transladava, o operador atravessava o quadro, o PID perseguia, e o drone
+    # orbitava o operador em vez de andar reto. Como o gesto e interpretado em
+    # eixos do CORPO, a direcao de "frente" girava junto e o deslocamento virava
+    # espiral.
+    #
+    # O CUSTO de desligar: transladando muito para os lados, o operador sai do
+    # quadro e a missao cai em LOST HAND -> SEARCH HAND, que gira para reachar.
+    # E o comportamento desejado -- girar para PROCURAR, nao para perseguir.
+    #
+    # (O rastreio em ALTURA foi desligado tambem, mas por outro motivo -- ver
+    # climb_tracking logo abaixo.)
+    yaw_tracking: 0.0
+
+    # ===== Rastreio em altura =====
+    # DESLIGADO (0.0). A altitude e um SETPOINT DE POSICAO, mantida onde a
+    # decolagem deixou -- um comando de translacao nao mexe nela.
+    #
+    # Duas coisas faziam o drone perder altura, e esta chave e a segunda:
+    #
+    #   1. o estado mandava velocidade vertical por setLocalVelocity. Comandar
+    #      vz = 0 NAO e manter altitude: pede-se taxa vertical zero, e o PX4
+    #      obedece, mas sem realimentacao de POSICAO em z qualquer vies
+    #      (estimador, empuxo, efeito de solo) integra livre e o drone afunda.
+    #      Agora z vai como posicao e o PX4 fecha a malha.
+    #
+    #   2. o PID de subida perseguia a mao em y=0.5 O TEMPO TODO, inclusive
+    #      durante os direcionais. Com o drone a 1.8 m e a mao na altura do
+    #      peito, o erro tem sinal constante: o drone descia enquanto andava.
+    #      Isso nao era deriva, era o laco fazendo o que foi mandado.
+    #
+    # Ligado (1.0), o PID volta -- mas movendo a REFERENCIA z_ref, nao mandando
+    # velocidade. O teto da correcao e max_vertical_velocity.
+    climb_tracking: 0.0
+
+    # ===== PID de guinada (so tem efeito com yaw_tracking: 1.0) =====
     # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
     # folga sobre o timer de 50 ms da FSM.
     yaw_pid_kp: 0.6

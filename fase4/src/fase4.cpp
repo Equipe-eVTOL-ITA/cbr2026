@@ -23,31 +23,15 @@
 #include "fase4/nodes/navegacao.hpp"
 #include "fase4/nodes/seguranca.hpp"
 
-/**
- * @brief Missao fase4, modelada como Behavior Tree.
- *
- * A DIFERENCA PARA UMA FSM, em uma frase: aqui nao ha transicoes nomeadas. A
- * ESTRUTURA da arvore -- Sequence, Fallback, decoradores -- faz o papel delas.
- *
- *   Sequence   executa os filhos em ordem; para no primeiro que falhar
- *   Fallback   tenta os filhos em ordem; para no primeiro que der certo
- *   Retry, Timeout, Inverter, ...  decoradores, que modificam um filho
- *
- * A arvore vive em trees/fase4.xml e e instalada no share/ do pacote. Trocar a
- * logica da missao e editar esse XML e relancar -- sem recompilar. E e o que
- * permite abrir a arvore no Groot2 e ver os nos piscando enquanto o drone voa.
- */
 class Fase4Node : public rclcpp::Node {
 public:
     explicit Fase4Node(std::shared_ptr<Drone> drone)
         : rclcpp::Node("fase4_node"), drone_(drone) {
 
-        // Valores padrao. O launch sobrescreve com config/simulation.yaml ou
-        // config/flight.yaml -- por isso trocar de simulacao para voo e trocar
-        // de YAML, nao editar codigo.
+        // Valores que serão sobreescritos com o config/*.yaml
         std::map<std::string, std::variant<double, std::string>> default_params = {
             // Decolagem
-            {"takeoff_height",          -2.5},   // metros, FRD: negativo e para cima
+            {"takeoff_height",          -2.5},
             {"max_vertical_velocity",    1.2},
             {"position_tolerance",       0.15},
 
@@ -59,13 +43,10 @@ public:
             // Movimento horizontal
             {"max_horizontal_velocity",  1.5},
 
-            // ── O labirinto ──────────────────────────────────────────────
-            //
-            // A planta e a rota vem de um YAML, o MESMO que o sim2d le. Se a
-            // missao tivesse a propria copia das dimensoes, ela poderia
-            // percorrer uma casa e o simulador desenhar outra.
+            // Labirinto
             {"mapa",                     std::string("cbr2026_fase4.yaml")},
 
+            // ANALISAR MELHOR ISSO AQUI
             // Onde o drone decola, EM COORDENADAS DO MAPA. E daqui que sai o
             // vies inicial da odometria: o Takeoff reancora o referencial na
             // decolagem, entao a odometria passa a ler zero neste ponto.
@@ -76,49 +57,29 @@ public:
             // Geometria das manobras
             {"recuo_da_janela",          0.35},   // onde parar antes do vao
             {"avanco_apos_janela",       0.35},   // onde parar depois dele
-            // Tolerancia dos deslocamentos. NAO e a `position_tolerance`, que
-            // vale para decolagem e pouso: 15 cm de folga num comodo de 95 cm
-            // deixa o drone parar a 15 cm do alvo, e foi assim que a primeira
-            // travessia terminou dentro do vao em vez de dentro do comodo.
+            
+            // Tolerancia dos deslocamentos.
             {"tolerancia_movimento",     0.06},
             {"tolerancia_centro",        0.08},
             {"yaw_tolerance",            0.05},
             {"ciclos_estaveis",          5.0},
 
             // Ajuste de scan (ver maze_geometry/scan_fit.hpp)
-            {"lidar_offset_frente",      0.0},   // ver os YAML de config
+            {"lidar_offset_frente",      0.0},
             {"lidar_alcance_max",        8.0},
             {"scan_salto_max",           0.15},
             {"scan_tolerancia",          0.03},
             {"scan_parede_min",          0.20},
 
-            // Qual arvore carregar, relativa a share/fase4/trees/. Os dois
-            // perfis podem apontar para arvores diferentes -- e uma das razoes
-            // de a arvore ser um arquivo e nao codigo.
+            // Qual arvore carregar, relativa a share/fase4/trees/.
             {"tree_file",                std::string("fase4.xml")},
 
             // Porta do Groot2. 0 desliga.
-            //
-            // Com ela ligada, abra o Groot2, conecte nesta porta e veja a
-            // arvore ao vivo: qual no esta RUNNING, qual falhou, o valor de
-            // cada porta. E a maior vantagem pratica da BT sobre a FSM na hora
-            // de depurar.
             {"groot2_port",           1667.0},
-
-            // ACRESCENTE aqui os parametros desta missao, e replique-os nos
-            // dois YAML de config/.
         };
 
         auto params = declareAndGetParameters(default_params);
 
-        // A blackboard da FSM continua sendo a fonte de parametros.
-        //
-        // Os estados do stdstates leem dela, e o adaptador do stdbt os executa
-        // sem modificacao. O efeito pratico e que esta missao usa os MESMOS
-        // YAML que uma missao em FSM usaria.
-        //
-        // Os parametros entram como FLOAT, nunca double: fsm::Blackboard faz
-        // cast sem checagem, e gravar double para ler float devolve lixo.
         for (const auto &[key, value] : params) {
             if (std::holds_alternative<double>(value)) {
                 blackboard_.set<float>(key, static_cast<float>(std::get<double>(value)));
@@ -128,18 +89,16 @@ public:
         }
         blackboard_.set<std::shared_ptr<Drone>>("drone", drone_);
 
-        // ======================= O LABIRINTO =======================
-        //
-        // Carregado ANTES da arvore, de proposito. Uma rota incoerente -- saida
-        // por parede sem janela, passo que nao leva ao comodo seguinte -- vira
-        // excecao aqui, com o no ainda no chao. O `carregar` valida tudo isso.
+        // Labirinto
         const auto mapa_arquivo = std::get<std::string>(params.at("mapa"));
         const auto mapa_caminho =
             ament_index_cpp::get_package_share_directory("fase4") + "/maps/" + mapa_arquivo;
-        casa_ = maze_geometry::carregar(mapa_caminho);
+        casa_ = maze_geometry::carregar(mapa_caminho); // valida a topologia do mapa
         RCLCPP_INFO(this->get_logger(), "labirinto: %zu comodos, rota de %zu passos (%s)",
                     casa_.comodos.size(), casa_.rota.size(), mapa_caminho.c_str());
 
+
+        // ANALISAR MELHOR ISSO AQUI
         // A TRANSFORMACAO INICIAL do mapa para a odometria.
         //
         // O TakeoffState reancora o referencial na decolagem: a odometria passa
@@ -167,7 +126,7 @@ public:
         blackboard_.set<Eigen::Vector2d>("vies_odometria", &vies_);
         blackboard_.set<double>("vies_yaw", &vies_yaw_);
 
-        // ======================= ARVORE =======================
+        // Árvore
         BT::BehaviorTreeFactory factory;
         stdbt::registerAll(factory);
 
@@ -191,14 +150,13 @@ public:
             tree_ = std::make_unique<BT::Tree>(
                 factory.createTreeFromFile(caminho, bt_blackboard));
         } catch (const std::exception &e) {
-            // Nome de no errado no XML NAO e erro de compilacao: aparece aqui.
-            // O test/test_tree.cpp existe para pegar isso no CI, antes do voo.
+            // Errar o nome no XML não gera erro de compilação, importante verificar aqui
             RCLCPP_FATAL(this->get_logger(),
-                         "nao consegui carregar a arvore '%s': %s", caminho.c_str(), e.what());
+                         "Não consegui carregar a árvore '%s': %s", caminho.c_str(), e.what());
             throw;
         }
 
-        RCLCPP_INFO(this->get_logger(), "arvore carregada de %s", caminho.c_str());
+        RCLCPP_INFO(this->get_logger(), "Árvore carregada de %s", caminho.c_str());
 
         const int porta = static_cast<int>(std::get<double>(params.at("groot2_port")));
         if (porta > 0) {
@@ -213,18 +171,7 @@ public:
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/drone_trajectory", 10);
         trajectory_.header.frame_id = "map";
 
-        // O callback escreve na blackboard e os nos apenas leem -- o mesmo
-        // padrao das fases de visao. Assim nenhum no da arvore conhece ROS.
-        //
-        // Sem grupo de callback explicito, este callback e o timer caem no
-        // grupo padrao do no, que e MUTUAMENTE EXCLUSIVO. Os dois nunca rodam
-        // ao mesmo tempo, e por isso o `scan_` nao precisa de mutex mesmo com
-        // executor multi-thread. Mover qualquer um dos dois para outro grupo
-        // reintroduz a corrida.
-        //
-        // QoS best_effort: e o do driver de LIDAR e o do sim2d. Um QoS
-        // incompativel faria o topico existir sem nunca casar, e o sintoma
-        // seria a missao esperando scan para sempre, sem erro nenhum.
+        // O callback escreve na blackboard e os nos apenas leem. Assim nenhum no da arvore conhece ROS.
         scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", rclcpp::SensorDataQoS(),
             [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
@@ -326,12 +273,6 @@ private:
 int main(int argc, const char *argv[]) {
     rclcpp::init(argc, argv);
 
-    // O Drone JA sobe o proprio executor e a propria thread de spin no
-    // construtor. Adiciona-lo a um executor aqui lanca em tempo de execucao:
-    //
-    //     what():  Node '/Drone' has already been added to an executor.
-    //
-    // Por isso so o no da missao entra no executor deste main.
     auto drone        = std::make_shared<Drone>();
     auto mission_node = std::make_shared<Fase4Node>(drone);
 

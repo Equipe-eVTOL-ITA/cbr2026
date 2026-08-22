@@ -25,8 +25,8 @@ fase1_node:
     known_base_radius: 1.5
 
     # ===== Grade de varredura (serpentina) =====
-    grid_y_length: -6.0
-    grid_step_x: 2.0
+    grid_y_length: -5.1
+    grid_step_x: -1.2 #passo negativo para drone voar "de costas"
     grid_num_steps: 3.0
 
     # ===== Altitudes (FRD, negativas) =====

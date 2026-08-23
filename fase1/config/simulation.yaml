@@ -37,6 +37,37 @@ fase1_node:
     max_horizontal_velocity: 1.0
     landing_velocity_max: 0.5
     landing_velocity_min: 0.2
+
+    # ===== Abordagem de pouso =====
+    #
+    # `exponencial` (padrao) -- v(t) = v_max·e^(-t/tau), com tau derivado das
+    #                alturas e velocidades acima. Nada de numero magico.
+    # `s_curve`    -- perfil em S: sai de v_max e chega a v_min com derivada
+    #                nula nas duas pontas. Sem o degrau de aceleracao do
+    #                primeiro tick, que numa camera apontada para baixo aparece
+    #                como a base saindo e voltando ao quadro.
+    # `px4`        -- o modo LAND do firmware. Usa o detector de solo do PX4,
+    #                que enxerga o que a missao nao enxerga (vento, empuxo
+    #                caindo ao encostar). MAS tira o drone de offboard, DESARMA,
+    #                e ignora os landing_velocity_* acima.
+    #
+    # Trocar aqui nao exige recompilar. Ver stdstates/landing/registro.hpp.
+    landing_mode: 'px4'
+
+    # ===== Politica de movimento =====
+    #
+    # COMO o drone vai de um ponto a outro.
+    #
+    # `holonomica` (padrao) -- linha reta ate o destino, inclusive de lado.
+    # `axial`      -- gira parado ate apontar para o destino, SO ENTAO avanca.
+    #                 Nunca comanda deslocamento lateral.
+    #
+    # Se a regra da prova mudar para "so pode girar e ir para frente", a
+    # resposta e trocar esta linha -- e mais nada. Vale para os estados de
+    # navegacao (waypoints, ida a um ponto, retorno); o alinhamento fino sobre
+    # a base continua corrigindo de lado de proposito, porque girar a cada
+    # correcao de centimetros destruiria o alinhamento.
+    motion_policy: 'axial'
     align_descent_velocity: 0.15
 
     # ===== Tolerancias e tempos =====

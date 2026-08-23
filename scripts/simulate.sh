@@ -56,12 +56,27 @@ cd "$HOME/PX4-Autopilot"
 #
 # Melhor recusar de saida, dizendo o que matar.
 # ---------------------------------------------------------------------------
-sobrando=""
-pgrep -x px4            >/dev/null 2>&1 && sobrando+=" px4"
-pgrep -f 'gz sim'       >/dev/null 2>&1 && sobrando+=" gz"
-pgrep -x MicroXRCEAgent >/dev/null 2>&1 && sobrando+=" agente"
+# A lista de "de que uma simulacao e feita" vem do scripts/processos.sh, e nao
+# daqui. Ela vivia duplicada -- escrita a mao neste arquivo e na task do VSCode
+# -- e as duas copias estavam incompletas do mesmo jeito.
+#
+# O `pgrep -f 'gz sim'` que estava aqui tinha ainda um defeito proprio: ele
+# casa com QUALQUER linha de comando que contenha "gz sim", inclusive a do
+# shell que esta rodando este script. Bastava alguem digitar o comando com o
+# padrao dentro para o guard recusar por causa de si mesmo. O processos.sh
+# exclui o proprio processo e seus ancestrais.
+# shellcheck source=../../../scripts/processos.sh
+source "$ws_root/scripts/processos.sh"
 
-if [[ -n "$sobrando" ]]; then
+# O `|| true` e obrigatorio aqui. `evtol_simulacao_viva` devolve 1 quando NAO
+# ha simulacao rodando -- que e o caso bom --, e este script roda com `set -e`
+# e `pipefail`: sem ele, o simulate.sh morre em silencio exatamente quando
+# tudo esta certo, e o log fica VAZIO. Foi assim que ele falhou aqui.
+# Sem o agente na lista, DE PROPOSITO: quem sobe o agente e o agent.sh, e a
+# task "sim: iniciar" roda os dois em paralelo. Ver evtol_simulacao_viva.
+sobrando="$(evtol_simulacao_viva px4 gazebo | tr '\n' ' ' || true)"
+
+if [[ -n "${sobrando// /}" ]]; then
     echo "ERRO: ja ha simulacao rodando ($sobrando)." >&2
     echo >&2
     echo "      O gz sim sobrevive quando o PX4 morre, e a proxima tentativa" >&2
@@ -69,7 +84,7 @@ if [[ -n "$sobrando" ]]; then
     echo "      errado. O drone nao aparece e a mensagem fala de outra coisa." >&2
     echo >&2
     echo "      Rode a task 'sim: parar tudo', ou:" >&2
-    echo "          pkill -x px4; pkill -f 'gz sim'; pkill -x MicroXRCEAgent" >&2
+    echo "          ./scripts/parar.sh" >&2
     exit 1
 fi
 

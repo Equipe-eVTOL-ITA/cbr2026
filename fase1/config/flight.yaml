@@ -45,34 +45,16 @@ fase1_node:
     landing_velocity_min: 0.15
 
     # ===== Abordagem de pouso =====
-    #
-    # `exponencial` (padrao) -- v(t) = v_max·e^(-t/tau), com tau derivado das
-    #                alturas e velocidades acima. Nada de numero magico.
-    # `s_curve`    -- perfil em S: sai de v_max e chega a v_min com derivada
-    #                nula nas duas pontas. Sem o degrau de aceleracao do
-    #                primeiro tick, que numa camera apontada para baixo aparece
-    #                como a base saindo e voltando ao quadro.
-    # `px4`        -- o modo LAND do firmware. Usa o detector de solo do PX4,
-    #                que enxerga o que a missao nao enxerga (vento, empuxo
-    #                caindo ao encostar). MAS tira o drone de offboard, DESARMA,
-    #                e ignora os landing_velocity_* acima.
-    #
-    # Trocar aqui nao exige recompilar. Ver stdstates/landing/registro.hpp.
+    # exponencial (padrao) | s_curve (sem degrau de aceleracao) |
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as
+    # landing_velocity_* acima). Trocar aqui nao exige recompilar.
     landing_mode: 'px4'
 
     # ===== Politica de movimento =====
-    #
-    # COMO o drone vai de um ponto a outro.
-    #
-    # `holonomica` (padrao) -- linha reta ate o destino, inclusive de lado.
-    # `axial`      -- gira parado ate apontar para o destino, SO ENTAO avanca.
-    #                 Nunca comanda deslocamento lateral.
-    #
-    # Se a regra da prova mudar para "so pode girar e ir para frente", a
-    # resposta e trocar esta linha -- e mais nada. Vale para os estados de
-    # navegacao (waypoints, ida a um ponto, retorno); o alinhamento fino sobre
-    # a base continua corrigindo de lado de proposito, porque girar a cada
-    # correcao de centimetros destruiria o alinhamento.
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
     motion_policy: 'axial'
     align_descent_velocity: 0.10
 
@@ -150,26 +132,19 @@ fase1_vision:
 # Camera
 # ===========================================================================
 #
-# O launch de voo sobe o no sem `name=`, entao ele fica com o nome PADRAO do
-# executavel -- `webcam_publisher`. Sem uma secao com esse nome exato aqui, o
-# no nao recebia parametro nenhum deste arquivo e caia nos defaults do codigo.
-#
-# Funcionava por coincidencia: o default de `camera_name` e 'vertical', que e o
-# que a fase 1 quer. Mas resolucao, taxa e dispositivo tambem vinham do default,
-# e este arquivo -- que e onde alguem vai procurar -- nao dizia nada sobre eles.
+# O launch sobe o no sem `name=`, entao o nome e o padrao do executavel. Sem
+# uma secao com esse nome exato, o no cai nos defaults do codigo.
 webcam_publisher:
   ros__parameters:
-    # O papel da camera no drone, e nao o modelo. E o que forma o topico:
-    # `vertical` -> /vertical_camera/compressed.
+    # O papel, e nao o modelo: forma o topico /vertical_camera/compressed.
     camera_name: 'vertical'
 
-    # [VOO] O quadro e recortado ao centro e redimensionado para este tamanho.
-    # Os intrinsecos abaixo (em fase1_vision) TEM de descrever ESTA imagem.
+    # Recorte central + resize. Os intrinsecos em fase1_vision descrevem ESTA
+    # imagem.
     frame_width: 640
     frame_height: 480
 
-    # [VOO] 10 Hz: o detector roda a 8 Hz, e publicar mais rapido so gasta
-    # banda de radio e CPU com quadro que sera descartado na chegada.
+    # 10 Hz: o detector roda a 8 Hz; publicar mais rapido so gasta banda.
     publish_rate: 10.0
 
     jpeg_quality: 70
@@ -180,20 +155,9 @@ webcam_publisher:
 base_detector:
   ros__parameters:
     # [VOO] Publicado pelo camera_publisher, nao pela ponte do Gazebo.
-    #
-    # ESTE VALOR ESTAVA ERRADO, e do jeito mais caro possivel: dizia
-    # '/vertical_camera/image/compressed', com um `/image/` no meio que o
-    # camera_publisher NAO produz. A convencao (camera_publisher/topicos.py) e
-    # `<papel>_camera/compressed`, sem nada entre os dois.
-    #
-    # O detector subia, nao reclamava e nunca recebia quadro. A missao voava
-    # cega e o log nao dizia por que. E exatamente a falha que o topicos.py
-    # documenta como ja tendo acontecido tres vezes neste workspace -- e o
-    # simulation.yaml ao lado sempre esteve certo, o que tornava o erro
-    # invisivel em simulacao.
-    #
-    # Confira com `ros2 topic info -v` antes de armar, ou rode a task
-    # 'voo: pré-voo', que faz isso por voce.
+    # A convencao e `<papel>_camera/compressed`, SEM `/image/` no meio; com o
+    # nome errado o detector sobe, nao reclama e nunca recebe quadro. Confira
+    # com `ros2 topic info -v`, ou rode a task 'voo: pré-voo'.
     image_topic: '/vertical_camera/compressed'
     detection_topic: '/base_detector/detections'
 

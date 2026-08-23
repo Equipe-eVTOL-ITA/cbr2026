@@ -132,10 +132,7 @@ public:
             // a mede ao entrar, porque o drone pousa de onde o gesto o deixou.
             {"landing_velocity_max",     0.5},
             {"landing_velocity_min",     0.2},
-            // A abordagem de POUSO e a politica de MOVIMENTO sao escolhidas no YAML.
-            // Os padroes aqui reproduzem exatamente o que a missao fazia antes de
-            // elas existirem -- trocar o padrao mudaria o voo de todo mundo de uma
-            // vez. Ver stdstates/landing/registro.hpp e drone/motion_policy.hpp.
+            // Escolhidos no YAML; os padroes reproduzem o voo de antes.
             {"landing_mode", std::string("exponencial")},
             {"motion_policy", std::string("holonomica")},
             {"max_base_height",         -0.2},

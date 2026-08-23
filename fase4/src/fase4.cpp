@@ -38,16 +38,10 @@ public:
             // Pouso
             {"landing_velocity_max",     0.5},
             {"landing_velocity_min",     0.15},
-            // A abordagem de POUSO e a politica de MOVIMENTO sao escolhidas no YAML.
-            // Os padroes aqui reproduzem exatamente o que a missao fazia antes de
-            // elas existirem -- trocar o padrao mudaria o voo de todo mundo de uma
-            // vez. Ver stdstates/landing/registro.hpp e drone/motion_policy.hpp.
+            // Escolhidos no YAML; os padroes reproduzem o voo de antes.
             {"landing_mode", std::string("exponencial")},
             {"motion_policy", std::string("holonomica")},
-            // -0.5, e nao -0.2: o config/*.yaml desta fase diz 0.5, e o
-            // default aqui dizia outra coisa. Um default que discorda do
-            // arquivo ao lado so aparece quando alguem roda a missao SEM o
-            // arquivo -- e ai o pouso e calculado para outra altura.
+            // Casa com o config/*.yaml; o default anterior discordava dele.
             {"max_base_height",         -0.5},
 
             // Movimento horizontal

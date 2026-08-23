@@ -56,24 +56,14 @@ cd "$HOME/PX4-Autopilot"
 #
 # Melhor recusar de saida, dizendo o que matar.
 # ---------------------------------------------------------------------------
-# A lista de "de que uma simulacao e feita" vem do scripts/processos.sh, e nao
-# daqui. Ela vivia duplicada -- escrita a mao neste arquivo e na task do VSCode
-# -- e as duas copias estavam incompletas do mesmo jeito.
-#
-# O `pgrep -f 'gz sim'` que estava aqui tinha ainda um defeito proprio: ele
-# casa com QUALQUER linha de comando que contenha "gz sim", inclusive a do
-# shell que esta rodando este script. Bastava alguem digitar o comando com o
-# padrao dentro para o guard recusar por causa de si mesmo. O processos.sh
-# exclui o proprio processo e seus ancestrais.
+# A lista vem do scripts/processos.sh, e nao daqui. O `pgrep -f 'gz sim'` que
+# estava neste arquivo casava com a propria linha de comando de quem o rodava.
 # shellcheck source=../../../scripts/processos.sh
 source "$ws_root/scripts/processos.sh"
 
-# O `|| true` e obrigatorio aqui. `evtol_simulacao_viva` devolve 1 quando NAO
-# ha simulacao rodando -- que e o caso bom --, e este script roda com `set -e`
-# e `pipefail`: sem ele, o simulate.sh morre em silencio exatamente quando
-# tudo esta certo, e o log fica VAZIO. Foi assim que ele falhou aqui.
-# Sem o agente na lista, DE PROPOSITO: quem sobe o agente e o agent.sh, e a
-# task "sim: iniciar" roda os dois em paralelo. Ver evtol_simulacao_viva.
+# `|| true` obrigatorio: evtol_simulacao_viva devolve 1 quando NAO ha
+# simulacao, e com `set -e` + `pipefail` o script morreria em silencio no caso
+# bom. Sem o agente na lista de proposito -- quem o sobe e o agent.sh.
 sobrando="$(evtol_simulacao_viva px4 gazebo | tr '\n' ' ' || true)"
 
 if [[ -n "${sobrando// /}" ]]; then

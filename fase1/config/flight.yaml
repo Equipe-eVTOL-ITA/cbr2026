@@ -25,8 +25,8 @@ fase1_node:
     known_base_radius: 1.5
 
     # ===== Grade de varredura (serpentina) =====
-    grid_y_length: -6.0
-    grid_step_x: 2.0
+    grid_y_length: -5.1
+    grid_step_x: -1.2 #passo negativo para drone voar "de costas"
     grid_num_steps: 3.0
 
     # ===== Altitudes (FRD, negativas) =====
@@ -155,9 +155,16 @@ webcam_publisher:
 base_detector:
   ros__parameters:
     # [VOO] Publicado pelo camera_publisher, nao pela ponte do Gazebo.
-    # A convencao e `<papel>_camera/compressed`, SEM `/image/` no meio; com o
-    # nome errado o detector sobe, nao reclama e nunca recebe quadro. Confira
-    # com `ros2 topic info -v`, ou rode a task 'voo: pré-voo'.
+    # SEM `/image/` no meio. A convencao do camera_publisher e
+    # `<papel>_camera/compressed`, e ela vale para as quatro cameras -- webcam,
+    # raspicam, jetson e oak. Trocar o hardware na mesma posicao do drone nao
+    # muda o topico.
+    #
+    # Este valor ja esteve errado: pedia `/vertical_camera/image/compressed`
+    # enquanto o launch subia o `webcam`, que publica sem o `/image/`. O
+    # detector subiria, nao reclamaria, e nunca receberia quadro -- a missao
+    # voaria CEGA. E o mesmo defeito que fez a fase 3 girar procurando uma mao
+    # que ninguem enxergava.
     image_topic: '/vertical_camera/compressed'
     detection_topic: '/base_detector/detections'
 

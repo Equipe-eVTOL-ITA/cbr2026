@@ -31,6 +31,14 @@ fase1_node:
 
     # ===== Altitudes (FRD, negativas) =====
     takeoff_height: -2.5
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'stdtakeoff'
     align_height: -2.0
     max_base_height: -1.5
     mean_base_height: -0.75
@@ -43,6 +51,19 @@ fase1_node:
     max_horizontal_velocity: 0.7
     landing_velocity_max: 0.35
     landing_velocity_min: 0.15
+
+    # ===== Abordagem de pouso =====
+    # exponencial (padrao) | s_curve (sem degrau de aceleracao) |
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as
+    # landing_velocity_* acima). Trocar aqui nao exige recompilar.
+    landing_mode: 'px4'
+
+    # ===== Politica de movimento =====
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
+    motion_policy: 'axial'
     align_descent_velocity: 0.10
 
     # ===== Tolerancias e tempos =====
@@ -116,6 +137,27 @@ fase1_vision:
     mean_base_height: -0.75
 
 # ===========================================================================
+# Camera
+# ===========================================================================
+#
+# O launch sobe o no sem `name=`, entao o nome e o padrao do executavel. Sem
+# uma secao com esse nome exato, o no cai nos defaults do codigo.
+webcam_publisher:
+  ros__parameters:
+    # O papel, e nao o modelo: forma o topico /vertical_camera/compressed.
+    camera_name: 'vertical'
+
+    # Recorte central + resize. Os intrinsecos em fase1_vision descrevem ESTA
+    # imagem.
+    frame_width: 640
+    frame_height: 480
+
+    # 10 Hz: o detector roda a 8 Hz; publicar mais rapido so gasta banda.
+    publish_rate: 10.0
+
+    jpeg_quality: 70
+
+# ===========================================================================
 # Detector de bases
 # ===========================================================================
 base_detector:
@@ -175,3 +217,33 @@ base_detector:
 system_health:
   ros__parameters:
     publish_rate: 1.0
+
+# ===========================================================================
+# Visualizacao (RViz + painel)
+# ===========================================================================
+telemetry_handler:
+  ros__parameters:
+    topics:
+      position: "/telemetry/position"
+      bases: "/telemetry/bases"
+    visualization:
+      # Disco desenhado em volta de uma base ja visitada.
+      known_base_radius: 1.5
+      # Duas deteccoes a menos que isto sao a MESMA base. Igual ao
+      # target_association_radius acima, e pela mesma razao: menor que a menor
+      # distancia entre duas bases da arena.
+      base_association_radius: 1.2
+      marker_period: 1.0
+      max_path_poses: 2000
+
+telemetry_dashboard:
+  ros__parameters:
+    network:
+      # O IP do drone nesta rede. Trocar no dia.
+      ping_target: "192.168.0.152"
+      ground_station_ip: "192.168.0.100"
+    topics:
+      logs: "/telemetry/logs"
+      drone_status: "/telemetry/drone_status"
+      system_health: "/telemetry/system_health"
+      position: "/telemetry/position"

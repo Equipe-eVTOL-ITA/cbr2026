@@ -47,6 +47,11 @@ ament_target_dependencies(fase1
 install(TARGETS fase1 DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+# O .rviz vive no repositorio da competicao, e nao na fase, porque as fases o
+# compartilham. Resolvido por get_package_share_directory no launch -- e nao
+# por um caminho para a arvore de FONTES, que e o que o sae2026 faz e o que
+# quebra em qualquer maquina que clone o workspace noutro lugar.
+install(DIRECTORY ../rviz/ DESTINATION share/${PROJECT_NAME}/rviz)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

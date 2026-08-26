@@ -56,12 +56,17 @@ cd "$HOME/PX4-Autopilot"
 #
 # Melhor recusar de saida, dizendo o que matar.
 # ---------------------------------------------------------------------------
-sobrando=""
-pgrep -x px4            >/dev/null 2>&1 && sobrando+=" px4"
-pgrep -f 'gz sim'       >/dev/null 2>&1 && sobrando+=" gz"
-pgrep -x MicroXRCEAgent >/dev/null 2>&1 && sobrando+=" agente"
+# A lista vem do scripts/processos.sh, e nao daqui. O `pgrep -f 'gz sim'` que
+# estava neste arquivo casava com a propria linha de comando de quem o rodava.
+# shellcheck source=../../../scripts/processos.sh
+source "$ws_root/scripts/processos.sh"
 
-if [[ -n "$sobrando" ]]; then
+# `|| true` obrigatorio: evtol_simulacao_viva devolve 1 quando NAO ha
+# simulacao, e com `set -e` + `pipefail` o script morreria em silencio no caso
+# bom. Sem o agente na lista de proposito -- quem o sobe e o agent.sh.
+sobrando="$(evtol_simulacao_viva px4 gazebo | tr '\n' ' ' || true)"
+
+if [[ -n "${sobrando// /}" ]]; then
     echo "ERRO: ja ha simulacao rodando ($sobrando)." >&2
     echo >&2
     echo "      O gz sim sobrevive quando o PX4 morre, e a proxima tentativa" >&2
@@ -69,7 +74,7 @@ if [[ -n "$sobrando" ]]; then
     echo "      errado. O drone nao aparece e a mensagem fala de outra coisa." >&2
     echo >&2
     echo "      Rode a task 'sim: parar tudo', ou:" >&2
-    echo "          pkill -x px4; pkill -f 'gz sim'; pkill -x MicroXRCEAgent" >&2
+    echo "          ./scripts/parar.sh" >&2
     exit 1
 fi
 

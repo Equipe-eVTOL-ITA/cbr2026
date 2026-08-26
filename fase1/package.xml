@@ -32,4 +32,7 @@
   <export>
     <build_type>ament_cmake</build_type>
   </export>
+  <!-- Subidos pelo launch de visualizacao, nao linkados. -->
+  <exec_depend>telemetry_handler</exec_depend>
+  <exec_depend>rviz2</exec_depend>
 </package>

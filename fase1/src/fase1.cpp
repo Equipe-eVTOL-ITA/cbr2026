@@ -199,6 +199,10 @@ public:
       {"max_horizontal_velocity", 1.0},
       {"landing_velocity_max", 0.5},
       {"landing_velocity_min", 0.2},
+      // Escolhidos no YAML; os padroes reproduzem o voo de antes.
+      {"landing_mode", std::string("exponencial")},
+      {"takeoff_mode", std::string("stdtakeoff")},
+      {"motion_policy", std::string("holonomica")},
       {"align_descent_velocity", 0.15},
 
       // Tolerâncias e tempos

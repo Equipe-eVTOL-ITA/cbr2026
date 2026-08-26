@@ -26,6 +26,14 @@ fase1_node:
 
     # ===== Altitudes (FRD, negativas) =====
     takeoff_height: -2.5
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'px4'
     align_height: -2.0
     max_base_height: -1.5
     mean_base_height: -0.75
@@ -37,6 +45,19 @@ fase1_node:
     max_horizontal_velocity: 1.0
     landing_velocity_max: 0.5
     landing_velocity_min: 0.2
+
+    # ===== Abordagem de pouso =====
+    # exponencial (padrao) | s_curve (sem degrau de aceleracao) |
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as
+    # landing_velocity_* acima). Trocar aqui nao exige recompilar.
+    landing_mode: 'exponencial'
+
+    # ===== Politica de movimento =====
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
+    motion_policy: 'holonomica'
     align_descent_velocity: 0.15
 
     # ===== Tolerancias e tempos =====
@@ -158,3 +179,33 @@ base_detector:
 system_health:
   ros__parameters:
     publish_rate: 1.0
+
+# ===========================================================================
+# Visualizacao (RViz + painel)
+# ===========================================================================
+telemetry_handler:
+  ros__parameters:
+    topics:
+      position: "/telemetry/position"
+      bases: "/telemetry/bases"
+    visualization:
+      # Disco desenhado em volta de uma base ja visitada.
+      known_base_radius: 1.5
+      # Duas deteccoes a menos que isto sao a MESMA base. Igual ao
+      # target_association_radius acima, e pela mesma razao: menor que a menor
+      # distancia entre duas bases da arena.
+      base_association_radius: 1.2
+      marker_period: 1.0
+      max_path_poses: 2000
+
+telemetry_dashboard:
+  ros__parameters:
+    network:
+      # O IP do drone nesta rede. Trocar no dia.
+      ping_target: "192.168.0.152"
+      ground_station_ip: "192.168.0.100"
+    topics:
+      logs: "/telemetry/logs"
+      drone_status: "/telemetry/drone_status"
+      system_health: "/telemetry/system_health"
+      position: "/telemetry/position"

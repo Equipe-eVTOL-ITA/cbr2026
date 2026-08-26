@@ -1,13 +1,4 @@
 # Parametros da missao fase3 — perfil: SIMULACAO
-#
-# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
-# As diferencas reais entre este arquivo e o flight.yaml estao marcadas com
-# [SIM]; o resto e igual de proposito.
-#
-# ATENCAO AO ARRANJO. Em voo o processamento NAO e embarcado: a camera fica no
-# drone e a imagem comprimida atravessa a rede ate o computador de solo. Na
-# simulacao tudo roda numa maquina so, e a camera e uma WEBCAM LOCAL fazendo o
-# papel da camera do drone -- o Gazebo nao renderiza uma mao.
 
 fase3_node:
   ros__parameters:
@@ -17,20 +8,35 @@ fase3_node:
     fictual_home_z: -0.6
 
     # ===== Decolagem =====
-    # Mais baixo que a fase 1: o drone precisa ficar na altura do operador para
-    # enxergar a mao, e nao sobrevoando a arena.
-    takeoff_height: -1.8
+    takeoff_height: -1.2
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'stdtakeoff'
     max_vertical_velocity: 1.0
     position_tolerance: 0.15
 
     # ===== Pouso =====
-    # A altura de PARTIDA nao esta aqui de proposito: o PrecisionLandingState a
-    # mede ao entrar no estado. O drone pousa de onde o gesto o deixou, que e
-    # qualquer altura, entao um valor fixo calcularia o perfil para uma queda
-    # que nao existe. Ver stdstates v0.3.0.
     landing_velocity_max: 0.5
     landing_velocity_min: 0.2
     max_base_height: -0.2
+
+    # ===== Abordagem de pouso =====
+    # exponencial (padrao)
+    # s_curve (sem degrau de aceleracao)
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as landing_velocity_* acima).
+    landing_mode: 'px4'
+
+    # ===== Politica de movimento =====
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
+    motion_policy: 'holonomica'
 
     # ===== Retorno e desarme =====
     return_home_timeout: 30.0
@@ -38,68 +44,32 @@ fase3_node:
     disarm_timeout: 20.0
 
     # ===== Busca da mao =====
-    # Gira 60 graus para cada lado procurando a palma aberta.
     yaw_speed: 0.35
-    search_yaw_range: 1.0472
-    # Ciclos consecutivos com o gesto antes de aceitar. Girar passa a mao pelo
-    # quadro de raspao; sem confirmacao, um unico quadro mal classificado para
-    # a busca no lugar errado.
+    search_yaw_range: 0.0 # desligado # 1.0472 # 60 graus
     search_confirm_cycles: 5.0
 
     # ===== Controle por gestos =====
-    # [SIM] Mais rapido que em voo: sem vento e sem risco de dano.
     control_speed: 0.4
     max_horizontal_velocity: 1.0
     # Segundos sem posicao de mao antes de voltar a procurar.
     detection_timeout: 3.0
-    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA. Alto de
-    # proposito: sao os dois comandos irreversiveis desta fase, e a 20 Hz isto
-    # e meio segundo de intencao clara. Os direcionais nao precisam de
-    # confirmacao, porque se corrigem sozinhos no ciclo seguinte.
+    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA.
     command_confirm_cycles: 10.0
 
     # ===== Rastreio por guinada =====
     # DESLIGADO (0.0). O drone mantem o rumo enquanto obedece aos gestos.
     #
-    # Ligado, o drone girava para manter a mao em x=0.5 -- e como a camera vai
-    # PRESA AO DRONE, a guinada move o proprio sensor: enquanto o drone
-    # transladava, o operador atravessava o quadro, o PID perseguia, e o drone
-    # orbitava o operador em vez de andar reto. Como o gesto e interpretado em
-    # eixos do CORPO, a direcao de "frente" girava junto e o deslocamento virava
-    # espiral.
-    #
-    # O CUSTO de desligar: transladando muito para os lados, o operador sai do
-    # quadro e a missao cai em LOST HAND -> SEARCH HAND, que gira para reachar.
-    # E o comportamento desejado -- girar para PROCURAR, nao para perseguir.
-    #
-    # (O rastreio em ALTURA foi desligado tambem, mas por outro motivo -- ver
-    # climb_tracking logo abaixo.)
-    yaw_tracking: 0.0
+    # LIGADO (1.0), o drone gira para manter a mao em x=0.5
+    yaw_tracking: 1.0
 
     # ===== Rastreio em altura =====
-    # DESLIGADO (0.0). A altitude e um SETPOINT DE POSICAO, mantida onde a
-    # decolagem deixou -- um comando de translacao nao mexe nela.
+    # DESLIGADO (0.0). A altitude é um SETPOINT DE POSICAO
     #
-    # Duas coisas faziam o drone perder altura, e esta chave e a segunda:
-    #
-    #   1. o estado mandava velocidade vertical por setLocalVelocity. Comandar
-    #      vz = 0 NAO e manter altitude: pede-se taxa vertical zero, e o PX4
-    #      obedece, mas sem realimentacao de POSICAO em z qualquer vies
-    #      (estimador, empuxo, efeito de solo) integra livre e o drone afunda.
-    #      Agora z vai como posicao e o PX4 fecha a malha.
-    #
-    #   2. o PID de subida perseguia a mao em y=0.5 O TEMPO TODO, inclusive
-    #      durante os direcionais. Com o drone a 1.8 m e a mao na altura do
-    #      peito, o erro tem sinal constante: o drone descia enquanto andava.
-    #      Isso nao era deriva, era o laco fazendo o que foi mandado.
-    #
-    # Ligado (1.0), o PID volta -- mas movendo a REFERENCIA z_ref, nao mandando
+    # LIGADO (1.0), move a REFERENCIA z_ref, nao mandando
     # velocidade. O teto da correcao e max_vertical_velocity.
-    climb_tracking: 0.0
+    climb_tracking: 1.0
 
     # ===== PID de guinada (so tem efeito com yaw_tracking: 1.0) =====
-    # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
-    # folga sobre o timer de 50 ms da FSM.
     yaw_pid_kp: 0.6
     yaw_pid_ki: 0.0
     yaw_pid_kd: 0.06
@@ -117,10 +87,7 @@ fase3_gesture:
     gesture_topic: '/gesture_detector/gestures'
     hand_topic: '/gesture_detector/hand_location'
 
-    # Qual mao manda. O gesture_detector publica sempre num_hands posicoes, com
-    # string vazia onde nao houve gesto, entao o indice identifica a mao de
-    # verdade -- o que NAO era o caso em 2025, e era a causa da incoerencia
-    # entre a busca (que lia [0]) e o controle (que lia [1]).
+    # Qual mao manda.
     controlling_hand: 0
 
 # ===========================================================================
@@ -140,9 +107,7 @@ gesture_detector:
     min_hand_presence_confidence: 0.5
     min_tracking_confidence: 0.5
 
-    # Debounce interno do detector, usado na sobreposicao de debug. A decisao
-    # que importa -- aceitar um comando -- e da missao, em
-    # command_confirm_cycles.
+    # Debounce interno do detector
     gesture_debounce: 5
 
     # [SIM] Debug ligado: aqui ha tela e ninguem esta voando de verdade.
@@ -157,29 +122,13 @@ gesture_detector:
 # ===========================================================================
 webcam_publisher:
   ros__parameters:
-    # ATENCAO AO NOME DO TOPICO.
+    # O webcam_publisher publica em `<camera_name>_camera/compressed`
     #
-    # O webcam_publisher publica em `<camera_name>_camera/compressed`, e nao em
-    # `<camera_name>/image/compressed`. Com camera_name: 'camera' o topico vira
-    # `camera_camera/compressed` -- foi exatamente o que aconteceu na primeira
-    # tentativa, e o gesture_detector, assinando outro nome, nunca recebeu um
-    # quadro. Nao havia erro: a camera publicava, o detector esperava, e o drone
-    # girava para sempre procurando uma mao.
-    #
-    # O `image_topic` do gesture_detector acima TEM de casar com o que sai
-    # daqui. Se trocar um, troque o outro.
-    #
-    # (Os publicadores do camera_publisher nao seguem a mesma convencao entre
-    # si: o `oak` e o `jetson` publicam em `camera/image/compressed`, o
-    # `raspicam` em `vertical_camera/image/compressed`. Confira o do seu
-    # hardware antes de mudar.)
+    # O `image_topic` do gesture_detector acima TEM de casar com o que sai daqui
     camera_name: 'frontal'
     use_compressed: true
     video_source: '/dev/video0'
 
-    # Os nomes destes parametros sao os que o no DECLARA. Escrever `width`,
-    # `height` ou `fps` nao da erro: o ROS ignora chave nao declarada, e o no
-    # sobe com os padroes dele. Foi o segundo erro da primeira tentativa.
     frame_width: 640
     frame_height: 480
     publish_rate: 15.0

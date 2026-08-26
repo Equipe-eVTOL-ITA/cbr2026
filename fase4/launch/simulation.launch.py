@@ -106,8 +106,17 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='false',
                               description='Abrir o RViz2'),
         DeclareLaunchArgument(
-            'mundo', default_value='fase4',
-            description='nome do mundo no gz; TEM de casar com o simulate.sh'),
+            # `cbr2026_fase4`, e NAO `fase4`: e o PX4_GZ_WORLD do simulate.sh,
+            # que usa nome proprio para nao sobrescrever o worlds/fase4.sdf de
+            # outra prova. O default errado aqui custou um voo inteiro: a ponte
+            # assinava /world/fase4/... , o gz publicava em
+            # /world/cbr2026_fase4/... , e o parameter_bridge NAO reclama de
+            # topico gz inexistente -- ele loga "Creating GZ->ROS Bridge" e
+            # fica quieto. O /scan chegava vazio, o CentralizarNoComodo ficava
+            # RUNNING para sempre e o drone parava parado no meio do comodo.
+            'mundo', default_value='cbr2026_fase4',
+            description='nome do mundo no gz; TEM de casar com o PX4_GZ_WORLD '
+                        'do simulate.sh'),
         DeclareLaunchArgument(
             'modelo', default_value='wanda_0',
             description='nome da instancia do modelo no gz (o PX4 acrescenta _0)'),

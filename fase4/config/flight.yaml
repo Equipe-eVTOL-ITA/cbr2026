@@ -30,14 +30,36 @@ fase4_node:
     # simulador que vale lembrar: ele responde sobre navegacao no plano, e nada
     # sobre nada fora dele.
     takeoff_height: -0.90
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'stdtakeoff'
     max_vertical_velocity: 0.7
     position_tolerance: 0.25
 
     # Pouso
     landing_velocity_max: 0.35
     landing_velocity_min: 0.12
-    max_base_height: 0.5
+    # FRD: para cima e NEGATIVO (positivo e aceito, com aviso no log).
+    max_base_height: -0.5
     landing_timeout: 5.0
+
+    # ===== Abordagem de pouso =====
+    # exponencial (padrao) | s_curve (sem degrau de aceleracao) |
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as
+    # landing_velocity_* acima). Trocar aqui nao exige recompilar.
+    landing_mode: 'exponencial'
+
+    # ===== Politica de movimento =====
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
+    motion_policy: 'holonomica'
 
     # Movimento horizontal
     #

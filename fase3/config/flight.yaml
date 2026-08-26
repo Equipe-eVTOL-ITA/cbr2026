@@ -1,11 +1,5 @@
 # Parametros da missao fase3 — perfil: VOO REAL
 #
-# Trocar de simulacao para voo real e trocar de arquivo, nunca editar o .cpp.
-# As diferencas reais entre este arquivo e o simulation.yaml estao marcadas com
-# [VOO]; o resto e igual de proposito.
-#
-# ATENCAO AO ARRANJO. O processamento NAO e embarcado:
-#
 #   DRONE                                       COMPUTADOR DE SOLO
 #     OAK-D (camera_jetson.launch.py)
 #       /oak/left/image_rect --> cuVSLAM        [fica no drone]
@@ -17,25 +11,7 @@
 #                                                     fase3 (FSM)
 #              <-------- /fmu/in/trajectory_setpoint -----+
 #
-# A MESMA camera serve a dois consumidores com necessidades opostas: o cuVSLAM
-# quer o par retificado inteiro a 30 Hz (recortar destruiria a escala metrica),
-# e o gesture_detector quer o minimo de bytes que ainda mostre uma mao. O
-# roi_stream existe para separar os dois -- ele so LE o topico do SLAM.
-#
-# Ou seja: a imagem comprimida ATRAVESSA A REDE. publish_rate, ROI e qualidade
-# do JPEG deixam de ser orcamento de CPU e passam a ser de BANDA. Meca antes de
-# subir os valores:
-#
 #     ros2 topic bw /gesto_camera/compressed
-#
-# Referencia medida na Jetson, com a vista completa que o driver publica:
-#
-#     /oak/left/image_rect/compressed   64 KB/quadro, 30 Hz  ->  1,9 MB/s
-#
-# ANTES DO PRIMEIRO VOO, confira:
-#   1. a banda disponivel no enlace, com o comando acima;
-#   2. que a ROI enquadra o operador (`ros2 run rqt_image_view rqt_image_view`);
-#   3. a posicao de casa, que em voo raramente e a origem.
 
 fase3_node:
   ros__parameters:
@@ -46,21 +22,35 @@ fase3_node:
     fictual_home_z: -0.6
 
     # ===== Decolagem =====
-    # Mais baixo que a fase 1: o drone precisa ficar na altura do operador para
-    # enxergar a mao, e nao sobrevoando a arena.
-    takeoff_height: -1.8
-    # [VOO] Mais conservador: o drone real tem inercia e o operador esta perto.
+    takeoff_height: -1.2
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'stdtakeoff'
     max_vertical_velocity: 0.7
     position_tolerance: 0.25
 
     # ===== Pouso =====
-    # A altura de PARTIDA nao esta aqui de proposito: o PrecisionLandingState a
-    # mede ao entrar no estado. O drone pousa de onde o gesto o deixou, que e
-    # qualquer altura, entao um valor fixo calcularia o perfil para uma queda
-    # que nao existe. Ver stdstates v0.3.0.
     landing_velocity_max: 0.35
     landing_velocity_min: 0.15
     max_base_height: -0.2
+
+    # ===== Abordagem de pouso =====
+    # exponencial (padrao)
+    # s_curve (sem degrau de aceleracao)
+    # px4 (modo LAND do firmware: tira de offboard, DESARMA, ignora as landing_velocity_* acima).
+    landing_mode: 'px4'
+
+    # ===== Politica de movimento =====
+    # holonomica (padrao) -- linha reta, inclusive de lado.
+    # axial               -- gira parado, so entao avanca; nunca de lado.
+    # Vale para os estados de navegacao; o alinhamento fino sobre a base
+    # continua corrigindo de lado de proposito.
+    motion_policy: 'holonomica'
 
     # ===== Retorno e desarme =====
     return_home_timeout: 30.0
@@ -68,76 +58,33 @@ fase3_node:
     disarm_timeout: 20.0
 
     # ===== Busca da mao =====
-    # Gira 60 graus para cada lado procurando a palma aberta.
-    # [VOO] Gira mais devagar: a imagem chega pela rede com atraso, e girar
-    # rapido faz a mao atravessar o quadro entre dois quadros processados.
     yaw_speed: 0.25
-    search_yaw_range: 1.0472
-    # Ciclos consecutivos com o gesto antes de aceitar. Girar passa a mao pelo
-    # quadro de raspao; sem confirmacao, um unico quadro mal classificado para
-    # a busca no lugar errado.
+    search_yaw_range: 0.0 # desligado   # 1.0472 # 60 graus
+    # Ciclos consecutivos com o gesto antes de aceitar.
     search_confirm_cycles: 5.0
 
     # ===== Controle por gestos =====
-    # [VOO] Mais lento: o drone real tem inercia, ha vento, e o operador esta
-    # a poucos metros.
     control_speed: 0.25
     max_horizontal_velocity: 0.6
-    # [VOO] Mais tolerante: a camera real perde quadros e a rede atrasa.
     detection_timeout: 5.0
-    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA. Alto de
-    # proposito: sao os dois comandos irreversiveis desta fase, e a 20 Hz isto
-    # e meio segundo de intencao clara. Os direcionais nao precisam de
-    # confirmacao, porque se corrigem sozinhos no ciclo seguinte.
+    # Ciclos consecutivos para aceitar POUSAR ou VOLTAR PARA CASA.
     command_confirm_cycles: 10.0
 
     # ===== Rastreio por guinada =====
     # DESLIGADO (0.0). O drone mantem o rumo enquanto obedece aos gestos.
     #
-    # Ligado, o drone girava para manter a mao em x=0.5 -- e como a camera vai
-    # PRESA AO DRONE, a guinada move o proprio sensor: enquanto o drone
-    # transladava, o operador atravessava o quadro, o PID perseguia, e o drone
-    # orbitava o operador em vez de andar reto. Como o gesto e interpretado em
-    # eixos do CORPO, a direcao de "frente" girava junto e o deslocamento virava
-    # espiral.
-    #
-    # O CUSTO de desligar: transladando muito para os lados, o operador sai do
-    # quadro e a missao cai em LOST HAND -> SEARCH HAND, que gira para reachar.
-    # E o comportamento desejado -- girar para PROCURAR, nao para perseguir.
-    #
-    # (O rastreio em ALTURA foi desligado tambem, mas por outro motivo -- ver
-    # climb_tracking logo abaixo.)
-    #
-    # [VOO] Em voo isto pesa mais: girar com a imagem chegando pela rede fecha
-    # o laco sobre um atraso que a simulacao nao tem.
-    yaw_tracking: 0.0
+    # LIGADO (1.0), o drone gira para manter a mao em x=0.5
+    yaw_tracking: 1.0
 
     # ===== Rastreio em altura =====
-    # DESLIGADO (0.0). A altitude e um SETPOINT DE POSICAO, mantida onde a
-    # decolagem deixou -- um comando de translacao nao mexe nela.
+    # DESLIGADO (0.0). A altitude é um SETPOINT DE POSICAO, mantida onde a
+    # decolagem deixou
     #
-    # Duas coisas faziam o drone perder altura, e esta chave e a segunda:
-    #
-    #   1. o estado mandava velocidade vertical por setLocalVelocity. Comandar
-    #      vz = 0 NAO e manter altitude: pede-se taxa vertical zero, e o PX4
-    #      obedece, mas sem realimentacao de POSICAO em z qualquer vies
-    #      (estimador, empuxo, efeito de solo) integra livre e o drone afunda.
-    #      Agora z vai como posicao e o PX4 fecha a malha.
-    #
-    #   2. o PID de subida perseguia a mao em y=0.5 O TEMPO TODO, inclusive
-    #      durante os direcionais. Com o drone a 1.8 m e a mao na altura do
-    #      peito, o erro tem sinal constante: o drone descia enquanto andava.
-    #      Isso nao era deriva, era o laco fazendo o que foi mandado.
-    #
-    # Ligado (1.0), o PID volta -- mas movendo a REFERENCIA z_ref, nao mandando
-    # velocidade. O teto da correcao e max_vertical_velocity.
+    # LIGADO (1.0), move a REFERENCIA z_ref, nao mandando
+    # velocidade. O teto da correcao é max_vertical_velocity.
     climb_tracking: 0.0
 
     # ===== PID de guinada (so tem efeito com yaw_tracking: 1.0) =====
-    # O sample_time NAO se configura aqui: e fixo em 0.04 s no stdstates, com
-    # folga sobre o timer de 50 ms da FSM.
-    # [VOO] Ganho menor: com o atraso da rede somado ao do sensor, o ganho da
-    # simulacao oscila em torno do alvo em vez de convergir.
     yaw_pid_kp: 0.4
     yaw_pid_ki: 0.0
     yaw_pid_kd: 0.08
@@ -155,10 +102,7 @@ fase3_gesture:
     gesture_topic: '/gesture_detector/gestures'
     hand_topic: '/gesture_detector/hand_location'
 
-    # Qual mao manda. O gesture_detector publica sempre num_hands posicoes, com
-    # string vazia onde nao houve gesto, entao o indice identifica a mao de
-    # verdade -- o que NAO era o caso em 2025, e era a causa da incoerencia
-    # entre a busca (que lia [0]) e o controle (que lia [1]).
+    # Qual mao manda.
     controlling_hand: 0
 
 # ===========================================================================
@@ -166,20 +110,14 @@ fase3_gesture:
 # ===========================================================================
 gesture_detector:
   ros__parameters:
-    # [VOO] Publicado PELO DRONE e recebido pela rede.
-    #
-    # NAO aponte isto para /oak/left/image_rect/compressed. Aquele topico e a
-    # vista completa a 30 Hz -- medido em 1,9 MB/s (~15 Mbps) -- e alimenta o
-    # cuVSLAM. Aqui entra o stream recortado do `roi_stream` (bloco no fim
-    # deste arquivo), que sai da MESMA camera mas ja vem cortado em ROI e na
-    # taxa que este detector realmente processa.
+
+    #Aqui entra o stream recortado do `roi_stream` (bloco no fim deste arquivo)
     image_topic: '/gesto_camera/compressed'
 
     num_hands: 2
 
     # [VOO] Frequencia menor: cada quadro processado e um quadro que teve de
     # atravessar a rede. Meca com `ros2 topic bw` antes de subir este valor.
-    #
     # Este filtro age no SOLO, depois da rede. Quem economiza banda e o
     # `publish_rate` do roi_stream, la no drone -- MANTENHA OS DOIS IGUAIS.
     # Com o roi_stream mais rapido que este valor, a diferenca e enlace gasto
@@ -194,12 +132,10 @@ gesture_detector:
     # Debounce interno do detector, usado na sobreposicao de debug. A decisao
     # que importa -- aceitar um comando -- e da missao, em
     # command_confirm_cycles.
-    # [VOO] Debounce maior: menos quadros por segundo chegando.
+    # Debounce maior: menos quadros por segundo chegando.
     gesture_debounce: 4
 
-    # [VOO] Debug em taxa baixa. A imagem anotada e a unica forma de
-    # diagnosticar deteccao depois do voo, mas cada quadro dela disputa banda
-    # com o stream que a missao precisa.
+    # Debug em taxa baixa.
     debug_image: true
     debug_mask: false
     debug_publish_rate: 2.0
@@ -218,55 +154,25 @@ gesture_detector:
 # Este bloco configura so o que a missao acrescenta: um no que se INSCREVE no
 # par retificado e publica uma versao recortada e mais lenta para o solo.
 #
-# ATENCAO AO NOME DO TOPICO.
-#
-# O roi_stream publica em `<camera_name>_camera/compressed`, e nao em
-# `<camera_name>/image/compressed`. Com camera_name: 'camera' o topico vira
-# `camera_camera/compressed` -- foi exatamente o que aconteceu na primeira
-# tentativa, e o gesture_detector, assinando outro nome, nunca recebeu um
-# quadro. Nao havia erro: a camera publicava, o detector esperava, e o drone
-# girava para sempre procurando uma mao.
+# O roi_stream publica em `<camera_name>_camera/compressed`
 #
 # O `image_topic` do gesture_detector acima TEM de casar com o que sai daqui.
-# Se trocar um, troque o outro.
 roi_stream:
   ros__parameters:
-    # A ENTRADA e o topico do cuVSLAM. Este no so LE dali: nada no caminho do
-    # SLAM e recortado, republicado ou alterado. Recortar o quadro que vai para
-    # o VSLAM invalidaria o camera_info e destruiria a escala metrica.
+    # A ENTRADA e o topico do cuVSLAM.
     input_topic: '/oak/left/image_rect'
 
-    # 'gesto' e nao 'frontal' de proposito: o que sai daqui e RECORTADO e mais
-    # lento que a camera, e nao pode ser confundido com a vista completa por
-    # quem for escrever um config depois.
     camera_name: 'gesto'
 
     # ===== Taxa: o maior ganho de banda =====
-    # Medido na Jetson: /oak/left/image_rect/compressed entrega 64 KB/quadro a
-    # 30 Hz = 1,9 MB/s (~15 Mbps). Como o detector processa a 8 Hz, mandar 30
-    # significa pagar enlace por 22 quadros/s que sao descartados na chegada.
     # MANTENHA IGUAL ao processing_frequency do gesture_detector acima.
-    #
-    # A TAXA REAL SAI QUANTIZADA, e nao e defeito: o no repassa quadros
-    # inteiros de uma fonte de 30 Hz, entao so consegue 30/n -- 30, 15, 10,
-    # 7,5, 6, 5. Pedir 8,0 entrega 7,5 Hz (1 de cada 4), que e o que o
-    # `ros2 topic hz` vai mostrar. Pedir 9 ou 10 entrega 10.
     publish_rate: 8.0
 
     # ===== ROI =====
     # Recorta 400x400 do centro do quadro 640x400, ou seja, tira as bordas
     # laterais e mantem a altura inteira.
     #
-    # roi_x/roi_y = -1 significa CENTRADO, e ha um motivo para nao mexer nisso
-    # sem pensar: o gesture_detector normaliza o centroide da mao pelo quadro
-    # que recebe, e os PIDs de guinada e altitude miram em 0.5. Com a ROI fora
-    # do centro, "0.5" deixa de ser a frente do drone e passa a ser o centro do
-    # recorte. Hoje isso esta latente (yaw_tracking e climb_tracking em 0.0),
-    # e morde em silencio quem religar os dois.
-    #
-    # O CUSTO do recorte e campo de visao: a mao tem de estar dentro da janela.
-    # Se o SEARCH HAND passar a perder o operador, o recorte estreitou a
-    # varredura -- baixe o yaw_speed antes de alargar a ROI.
+    # roi_x/roi_y = -1 significa CENTRADO.
     roi_width: 400
     roi_height: 400
     roi_x: -1

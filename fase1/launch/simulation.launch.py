@@ -7,6 +7,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -29,6 +31,7 @@ def generate_launch_description():
              '/telemetry/drone_status',
              '/telemetry/bases',
              '/base_detector/detections',
+             '/base_markers',
              '/fmu/out/vehicle_local_position',
              '/fmu/out/vehicle_status',
              '/fmu/in/trajectory_setpoint'],
@@ -62,10 +65,40 @@ def generate_launch_description():
         package='fase1', executable='fase1',
         parameters=[params], output='screen')
 
+    # Visualizacao. Em simulacao tudo roda na mesma maquina; em voo isto vai
+    # para o ground.launch.py, na estacao de solo.
+    rviz_cfg = os.path.join(get_package_share_directory('fase1'), 'rviz', 'fase1.rviz')
+    rviz = Node(
+        package='rviz2', executable='rviz2',
+        arguments=['-d', rviz_cfg],
+        condition=IfCondition(LaunchConfiguration('rviz')),
+        output='screen')
+
+    # Converte /telemetry/bases em marcadores e /telemetry/position em
+    # pose/path. Tem argumento PROPRIO, e nao o do RViz: os marcadores tambem
+    # vao para o rosbag, e quem roda sem GUI ainda quer o registro do que foi
+    # visitado.
+    telemetry = Node(
+        package='telemetry_handler', executable='telemetry_handler',
+        parameters=[params], output='screen',
+        condition=IfCondition(LaunchConfiguration('telemetria')))
+
+    dashboard = Node(
+        package='telemetry_handler', executable='telemetry_dashboard',
+        parameters=[params], output='screen',
+        condition=IfCondition(LaunchConfiguration('dashboard')))
+
     return LaunchDescription([
-        DeclareLaunchArgument('rviz', default_value='false',
-                              description='Abrir o RViz2'),
+        DeclareLaunchArgument('rviz', default_value='true',
+                              description='Abrir o RViz2 com a trajetoria e as bases'),
+        DeclareLaunchArgument('telemetria', default_value='true',
+                              description='Converter telemetria em marcadores/pose'),
+        DeclareLaunchArgument('dashboard', default_value='false',
+                              description='Abrir o painel de status (Tk)'),
         bag,
+        rviz,
+        telemetry,
+        dashboard,
         image_bridge,
         system_health,
         base_detector,

@@ -116,8 +116,23 @@ class CentralizarNoComodo : public NoDaFase {
     if (!ajuste.valido) {
       estaveis_ = 0;
       MovimentoAxial::parar(ctx_.drone);
+
+      // DIZER POR QUE. O nó ficar RUNNING é a política certa -- a desistência
+      // mora no <Timeout> da árvore --, mas ficar RUNNING EM SILÊNCIO faz um
+      // LIDAR morto parecer idêntico a um alinhamento que não converge. Foi
+      // isso que aconteceu: a ponte gz->ROS assinava o mundo errado, o /scan
+      // chegava vazio, e o log só mostrava um drone parado no meio do cômodo.
+      //
+      // O `ajustar` já devolve o motivo pronto; jogá-lo fora era o defeito.
+      // Estrangulado por repetição, e não por tempo: o motivo muda quando a
+      // causa muda, e é essa transição que interessa a quem lê o log.
+      if (ajuste.motivo != ultimo_motivo_) {
+        ultimo_motivo_ = ajuste.motivo;
+        ctx_.drone->log("SEM CORREÇÃO do LIDAR: " + ajuste.motivo);
+      }
       return BT::NodeStatus::RUNNING;
     }
+    ultimo_motivo_.clear();
 
     // Já com o viés novo: o centro do cômodo em coordenadas da odometria, e o
     // rumo da saída também. Comandar posição e guinada juntos aqui é seguro
@@ -156,6 +171,7 @@ class CentralizarNoComodo : public NoDaFase {
  private:
   int estaveis_{0};
   double z_{-1.0};
+  std::string ultimo_motivo_;
 };
 
 /**

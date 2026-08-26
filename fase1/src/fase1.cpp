@@ -201,6 +201,7 @@ public:
       {"landing_velocity_min", 0.2},
       // Escolhidos no YAML; os padroes reproduzem o voo de antes.
       {"landing_mode", std::string("exponencial")},
+      {"takeoff_mode", std::string("stdtakeoff")},
       {"motion_policy", std::string("holonomica")},
       {"align_descent_velocity", 0.15},
 

@@ -26,6 +26,14 @@ fase1_node:
 
     # ===== Altitudes (FRD, negativas) =====
     takeoff_height: -2.5
+
+    # ===== Abordagem de decolagem =====
+    # stdtakeoff (padrao) -- sobe por setpoint, em OFFBOARD, ate o
+    #                        takeoff_height acima.
+    # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
+    #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
+    #                        sai de offboard, e o estado reentra ao terminar.
+    takeoff_mode: 'stdtakeoff'
     align_height: -2.0
     max_base_height: -1.5
     mean_base_height: -0.75

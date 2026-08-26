@@ -33,7 +33,7 @@ fase1_node:
     # px4                 -- AUTO_TAKEOFF do firmware. Sobe ate o
     #                        MIS_TAKEOFF_ALT do PX4 e IGNORA o takeoff_height;
     #                        sai de offboard, e o estado reentra ao terminar.
-    takeoff_mode: 'stdtakeoff'
+    takeoff_mode: 'px4'
     align_height: -2.0
     max_base_height: -1.5
     mean_base_height: -0.75

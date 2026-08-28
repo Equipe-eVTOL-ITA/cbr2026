@@ -106,9 +106,22 @@ fase1_vision:
     camera_cx: 0.0
     camera_cy: 0.0
     camera_hfov: 1.047
+    # Resolucao BRUTA da captura, antes do recorte. Tem de casar com o que o
+    # driver V4L realmente entrega -- o webcam_publisher loga isso na subida
+    # ("captura efetiva"). Pedir um modo que a camera nao tem faz o driver
+    # devolver outro em silencio, e ai estes numeros passam a mentir.
     camera_width: 640
     camera_height: 480
-    published_size: 480     # o camera_publisher recorta ao centro e redimensiona
+
+    # Lado da imagem PUBLICADA. O webcam_publisher recorta ao centro para
+    # min(W,H) = 480 e redimensiona para este lado; fromHorizontalFov refaz
+    # exatamente essa conta (escala = published_size / 480).
+    #
+    # A imagem publicada e SEMPRE quadrada: os intrinsecos aqui sao um unico
+    # `published_size`, sem largura e altura separadas. Publicar 640x480 --
+    # como este config pedia -- esticava a imagem 1,33x na horizontal e punha
+    # o centro optico calculado em 240 quando o real era 320.
+    published_size: 640
 
     # ===== Extrinsecos: pose da camera no CORPO (FRD) =====
     # Mesma convencao do simulation.yaml -- ver os comentarios la.
@@ -147,10 +160,24 @@ webcam_publisher:
     # O papel, e nao o modelo: forma o topico /vertical_camera/compressed.
     camera_name: 'vertical'
 
+    # Modo de captura pedido ao driver V4L. 0 = nao mexe, aceita o default do
+    # driver. Deixar no default e o que fazia a resolucao variar entre bancada
+    # e voo sem ninguem mudar nada: cada camera (e as vezes cada boot) escolhia
+    # um modo. Confira os modos reais com:
+    #     v4l2-ctl -d /dev/video0 --list-formats-ext
+    # e espelhe o valor efetivo em camera_width/camera_height acima.
+    capture_width: 640
+    capture_height: 480
+
     # Recorte central + resize. Os intrinsecos em fase1_vision descrevem ESTA
-    # imagem.
+    # imagem, e ela PRECISA ser quadrada -- ver published_size la em cima.
+    #
+    # 640 com captura 640x480 significa recorte 480x480 ampliado para 640x640:
+    # nao cria detalhe, so casa com a simulacao, que publica 640x640. Para que
+    # 640 seja detalhe de verdade, suba a captura para um modo cuja MENOR
+    # dimensao seja >= 640 (ex.: 1280x720) e atualize camera_width/height.
     frame_width: 640
-    frame_height: 480
+    frame_height: 640
 
     # 10 Hz: o detector roda a 8 Hz; publicar mais rapido so gasta banda.
     publish_rate: 10.0

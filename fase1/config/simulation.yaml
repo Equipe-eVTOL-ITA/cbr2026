@@ -78,6 +78,20 @@ fase1_node:
     pid_pos_ki: 0.01
     pid_pos_kd: 0.05
 
+# NAO TEM EFEITO NESTE PERFIL, e esta aqui so para dizer isso.
+#
+# A simulacao NAO sobe o camera_publisher: simulation.launch.py usa a ponte
+# `ros_gz_image image_bridge`, que republica o quadro do Gazebo bit a bit, sem
+# recortar nem redimensionar. O ROS carrega estes parametros e nenhum no os le.
+#
+# Para mudar a resolucao da imagem em SIMULACAO, edite o <image> de
+# PX4-gazebo-models/models/vertical_camera/model.sdf (e os tres campos de
+# fase1_vision acima). Estes parametros so valem em flight.yaml.
+webcam_publisher:
+  ros__parameters:
+    frame_width: 640
+    frame_height: 640
+
 # ===========================================================================
 # No de visao da missao: projecao pixel -> mundo
 # ===========================================================================
@@ -95,9 +109,18 @@ fase1_vision:
     camera_cx: 0.0          # que os dois perfis tenham as MESMAS chaves e o
     camera_cy: 0.0          # `diff` entre eles mostre so o que muda de fato
     camera_hfov: 1.047      # rad (60 graus)
-    camera_width: 800
-    camera_height: 800
-    published_size: 800
+
+    # Iguais ao SDF: a camera do Gazebo ja e quadrada, entao o recorte central
+    # e no-op e published_size = lado do SDF. Se mudar um, mude os quatro --
+    # PX4-gazebo-models/models/vertical_camera/model.sdf incluido.
+    #
+    # 640 (era 800) para casar com o que o webcam_publisher entrega em voo.
+    # Sim e voo publicando lados diferentes e o que fazia os dois discordarem:
+    # mesmo com fx correto nos dois, um detector ajustado em pixels via alvos
+    # de tamanhos diferentes.
+    camera_width: 640
+    camera_height: 640
+    published_size: 640
 
     # ===== Extrinsecos: pose da camera no CORPO (FRD) =====
     # R_b_c = Rz(yaw)*Ry(pitch)*Rx(roll) leva vetores da camera para o corpo.

@@ -82,10 +82,10 @@ fase3_node:
     #
     # LIGADO (1.0), move a REFERENCIA z_ref, nao mandando
     # velocidade. O teto da correcao é max_vertical_velocity.
-    climb_tracking: 0.0
+    climb_tracking: 1.0
 
     # ===== PID de guinada (so tem efeito com yaw_tracking: 1.0) =====
-    yaw_pid_kp: 0.4
+    yaw_pid_kp: 0.3
     yaw_pid_ki: 0.0
     yaw_pid_kd: 0.08
 

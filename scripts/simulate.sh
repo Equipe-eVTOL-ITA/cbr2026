@@ -212,6 +212,89 @@ if (( faltando )); then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Sobe o Gazebo NOS MESMOS, e so chama o PX4 quando o mundo estiver pronto.
+#
+# Deixar o PX4 subir o Gazebo perde uma corrida que ele nao tenta ganhar. Em
+# px4-rc.simulator ele lanca `gz sim -s` em background e segue direto; logo
+# depois o GZBridge pede o spawn do drone com UM UNICO request de 1000 ms e
+# sem retry (GZBridge.cpp, ramo `else` de PX4_GZ_STANDALONE):
+#
+#     ERROR [gz_bridge] Service call timed out. Check GZ_SIM_RESOURCE_PATH
+#     ERROR [init] gz_bridge failed to start and spawn model
+#
+# Medido nesta arena: o mundo leva ~2,4 s ate anunciar /world/<mundo>/create,
+# com o cache quente. Contra 1 s de paciencia, o PX4 perde quase sempre -- dai
+# o "as vezes funciona": funciona quando um `gz sim` de uma tentativa ANTERIOR
+# ficou vivo e ja tinha o mundo carregado. Ou seja, o caso que parecia sucesso
+# dependia do lixo da falha anterior, e podia spawnar no mundo errado.
+#
+# A mensagem culpa o GZ_SIM_RESOURCE_PATH, que nao tem nada a ver.
+#
+# Com PX4_GZ_STANDALONE=1 o PX4 nao sobe o Gazebo e passa a usar o outro ramo
+# do GZBridge, que reteta a cada 2 s ate conseguir. Como nos so o chamamos
+# depois do mundo pronto, ele acerta de primeira.
+#
+# CUIDADO com o valor: px4-rc.simulator testa se a variavel e NAO-VAZIA para
+# decidir se sobe o Gazebo, mas o GZBridge exige exatamente "1" para ativar o
+# retry. Qualquer outro valor (`true`, `yes`) da o pior dos dois mundos: o PX4
+# nao sobe o Gazebo E continua com o request unico de 1 s.
+# ---------------------------------------------------------------------------
+gz_log="$(mktemp -t evtol_gz_XXXXXX.log)"
+
+# --verbose=3 (e nao o =1 que o px4-rc.simulator usa) porque e em 3 que o gz
+# imprime as linhas [Msg] com os servicos que anunciou. Em 1 ele so loga erro,
+# o arquivo fica VAZIO e a espera abaixo ia ate o timeout com o mundo pronto.
+# Vai para arquivo, entao nao polui o console.
+gz sim --verbose=3 -r -s "$px4_gz/worlds/$PX4_GZ_WORLD.sdf" > "$gz_log" 2>&1 &
+gz_pid=$!
+
+# Sem isto, um Ctrl+C no PX4 (ou um erro aqui) deixa exatamente o `gz sim`
+# orfao que o bloco "Sobrou simulacao da vez passada?" no topo deste arquivo
+# existe para barrar -- e a proxima execucao ja comeca recusada.
+limpar_gazebo() {
+    kill "$gz_pid" 2>/dev/null || true
+    rm -f "$gz_log"
+}
+trap limpar_gazebo EXIT
+
+if [[ -z "${HEADLESS:-}" ]]; then
+    gz sim -g > /dev/null 2>&1 &
+fi
+
+# Espera o SERVICO DE SPAWN, e nao o processo: o `gz sim` existe muito antes
+# de o mundo estar carregado, e e justamente essa janela que derruba o PX4.
+# Olhamos o log em vez de chamar `gz service -l` porque a descoberta do gz
+# custa ~2 s por chamada -- mais que o proprio carregamento do mundo.
+echo "Aguardando o Gazebo carregar '$PX4_GZ_WORLD'..."
+pronto=0
+for _ in $(seq 1 600); do   # 600 x 0,1 s = 60 s
+    # Casamos so o TOPICO, que e uma substring contigua. O gz intercala
+    # codigos ANSI de cor no meio da frase ("Create service on [" ESC
+    # "/world/.../create" ESC "]"), entao procurar a linha inteira como texto
+    # literal nunca casa -- e a espera ia ate o timeout com o mundo pronto.
+    if grep -qa "/world/$PX4_GZ_WORLD/create" "$gz_log" 2>/dev/null; then
+        pronto=1
+        break
+    fi
+    if ! kill -0 "$gz_pid" 2>/dev/null; then
+        echo "ERRO: o Gazebo morreu antes de carregar o mundo. Log:" >&2
+        tail -20 "$gz_log" >&2
+        exit 1
+    fi
+    sleep 0.1
+done
+
+if (( ! pronto )); then
+    echo "ERRO: o Gazebo nao anunciou /world/$PX4_GZ_WORLD/create em 60 s." >&2
+    echo "      Ultimas linhas do log:" >&2
+    tail -20 "$gz_log" >&2
+    exit 1
+fi
+
+echo "Gazebo pronto. Subindo o PX4."
+
+PX4_GZ_STANDALONE=1 \
 PX4_SYS_AUTOSTART=$PX4_SYS_AUTOSTART \
 PX4_GZ_MODEL_POSE=$PX4_GZ_MODEL_POSE \
 PX4_GZ_WORLD=$PX4_GZ_WORLD \

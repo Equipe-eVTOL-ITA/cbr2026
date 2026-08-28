@@ -129,8 +129,13 @@ webcam_publisher:
     use_compressed: true
     video_source: '/dev/video0'
 
+    # QUADRADO. O recorte central para quadrado e incondicional no
+    # webcam_publisher, entao 640x480 aqui pegava o recorte de 480x480 e o
+    # esticava 1,33x na horizontal antes de publicar. Para gesto isso nao
+    # causava erro visivel, so deformava a mao; agora o no recusa a combinacao
+    # na subida em vez de aceitar em silencio.
     frame_width: 640
-    frame_height: 480
+    frame_height: 640
     publish_rate: 15.0
     jpeg_quality: 70
 
